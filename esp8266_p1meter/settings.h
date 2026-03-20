@@ -18,9 +18,7 @@
 #endif
 
 // Update treshold in milliseconds, messages will only be sent on this interval
-//#define UPDATE_INTERVAL 60000  // 1 minute
-#define UPDATE_INTERVAL 30000 // 30s
-//#define UPDATE_INTERVAL 300000 // 5 minutes
+#define UPDATE_INTERVAL 1000 // 1s for near-instant updates
 
 // * Baud rate for both hardware and software
 #define BAUD_RATE 115200
@@ -32,7 +30,8 @@
 // #define SERIAL_TX TX
 
 // * Max telegram length
-#define P1_MAXLINELENGTH 2048 // 4096 longest normal line is 47 char (+3 for \r\n\0)
+#define P1_MAXLINELENGTH 2050 // Increased to 2050 to allow for safe termination
+#define MQTT_BUFFER_SIZE 1024 // Increased for large peak JSON messages
 
 // * The hostname of our little creature
 #define HOSTNAME "p1meter"
@@ -95,7 +94,11 @@ long mActualAverage15mPeak = 0;
 long mMax15mPeakThisMonth = 0;
 long mAverage15mPeakLast13months = 0;
 
-StaticJsonDocument<256> Last13MonthsPeaks_json; //max buffer of PubSubClient is 256 byte. so no longer JSON messages allowed!
+JsonDocument Last13MonthsPeaks_json; // In ArduinoJson 7, JsonDocument handles its own memory.
 
 // * Set during CRC checking
 unsigned int currentCRC = 0;
+
+// Reconnection state
+unsigned long lastReconnectAttempt = 0;
+bool mqttReconnectPending = false;

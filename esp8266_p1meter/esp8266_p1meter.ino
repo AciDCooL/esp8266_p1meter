@@ -1,3 +1,12 @@
+/* 
+ * ESP8266 P1 Meter
+ * Version Management:
+ * 1.0.0 - Original version
+ * 1.1.0 - Fixed buffer overflow, increased MQTT buffer, added crash reporting & milestones
+ * 1.2.0 - Added change detection, heap protection (no String objects), static MQTT buffer, and 1s updates.
+ */
+#define VERSION "1.2.0"
+
 #include <FS.h>
 #include <EEPROM.h>
 #include <DNSServer.h>
@@ -29,6 +38,22 @@ WiFiClient espClient;
 
 // * Initiate MQTT client
 PubSubClient mqtt_client(espClient);
+
+// * Reset and Milestone tracking
+String last_reset_info = "";
+struct {
+    uint32_t marker; // To verify RTC memory is valid
+    uint32_t milestone;
+} rtc_data;
+
+#define RTC_MARKER 0xDEADBEEF
+#define RTC_BASE_ADDR 64 // Offset from DRD to avoid collision
+
+void set_milestone(uint32_t m) {
+    rtc_data.milestone = m;
+    rtc_data.marker = RTC_MARKER;
+    ESP.rtcUserMemoryWrite(RTC_BASE_ADDR, (uint32_t*)&rtc_data, sizeof(rtc_data));
+}
 
 // **********************************
 // * WIFI                           *
@@ -75,100 +100,117 @@ void send_mqtt_message(const char *topic, char *payload)
 }
 
 // * send a Json message to a broker topic
-void send_mqtt_message(const char *topic, StaticJsonDocument<256> doc)
+void send_mqtt_message(const char *topic, JsonDocument& doc)
 {
-    char buffer[256]; //max buffer of PubSubClient is 256 byte.
-    size_t n = serializeJson(doc, buffer);
-    mqtt_client.publish(topic, buffer, n);
-    doc.clear(); // clear memory for the Json Document in this method.
+    static char static_mqtt_buffer[MQTT_BUFFER_SIZE]; 
+    size_t n = serializeJson(doc, static_mqtt_buffer, sizeof(static_mqtt_buffer));
+    mqtt_client.publish(topic, (uint8_t*)static_mqtt_buffer, n);
+    doc.clear(); 
 }
 
 // * Reconnect to MQTT server and subscribe to in and out topics
 bool mqtt_reconnect()
 {
-    // * Loop until we're reconnected
-    int MQTT_RECONNECT_RETRIES = 0;
+    Serial.println(F("Attempting MQTT connection..."));
 
-    while (!mqtt_client.connected() && MQTT_RECONNECT_RETRIES < MQTT_MAX_RECONNECT_TRIES)
+    // * Attempt to connect
+    if (mqtt_client.connect(HOSTNAME, MQTT_USER, MQTT_PASS))
     {
-        MQTT_RECONNECT_RETRIES++;
-        Serial.printf("MQTT connection attempt %d / %d ...\n", MQTT_RECONNECT_RETRIES, MQTT_MAX_RECONNECT_TRIES);
+        Serial.println(F("MQTT connected!"));
 
-        // * Attempt to connect
-        if (mqtt_client.connect(HOSTNAME, MQTT_USER, MQTT_PASS))
-        {
-            Serial.println(F("MQTT connected!"));
+        // * Once connected, publish an announcement...
+        String message = String("p1 meter alive: ") + HOSTNAME + " (v" + VERSION + ")";
+        mqtt_client.publish("hass/status", message.c_str());
 
-            // * Once connected, publish an announcement...
-            char *message = new char[16 + strlen(HOSTNAME) + 1];
-            strcpy(message, "p1 meter alive: ");
-            strcat(message, HOSTNAME);
-            mqtt_client.publish("hass/status", message);
-
-            Serial.printf("MQTT root topic: %s\n", MQTT_ROOT_TOPIC);
+        // Publish the last reset report for debugging
+        if (last_reset_info != "") {
+            String report = String("Version: ") + VERSION + " | " + last_reset_info;
+            String topic = String(MQTT_ROOT_TOPIC) + "/last_reset";
+            mqtt_client.publish(topic.c_str(), report.c_str(), true); // Retain this message
         }
-        else
-        {
-            Serial.print(F("MQTT Connection failed: rc="));
-            Serial.println(mqtt_client.state());
-            Serial.println(F(" Retrying in 5 seconds"));
-            Serial.println("");
 
-            // * Wait 5 seconds before retrying
-            delay(5000);
-        }
+        Serial.printf("MQTT root topic: %s\n", MQTT_ROOT_TOPIC);
+        return true;
     }
-
-    if (MQTT_RECONNECT_RETRIES >= MQTT_MAX_RECONNECT_TRIES)
+    else
     {
-        Serial.printf("*** MQTT connection failed, giving up after %d tries ...\n", MQTT_RECONNECT_RETRIES);
+        Serial.print(F("MQTT Connection failed: rc="));
+        Serial.println(mqtt_client.state());
         return false;
     }
-
-    return true;
 }
 
-void send_metric(String name, long metric)
-{
-    char output[10];
-    ltoa(metric, output, sizeof(output));
+// Global storage for "Last Sent" values to enable change detection
+long LAST_CON_LOW = -1, LAST_CON_HIGH = -1, LAST_RET_LOW = -1, LAST_RET_HIGH = -1;
+long LAST_ACT_CON = -1, LAST_ACT_RET = -1, LAST_GAS = -1;
+long LAST_L1_P = -1, LAST_L2_P = -1, LAST_L3_P = -1, LAST_L1_C = -1, LAST_L2_C = -1, LAST_L3_C = -1, LAST_L1_V = -1, LAST_L2_V = -1, LAST_L3_V = -1;
+long LAST_TARIF = -1, LAST_S_OUT = -1, LAST_L_OUT = -1, LAST_S_DROP = -1, LAST_S_PEAK = -1;
+long LAST_AVG_15M = -1, LAST_MAX_15M = -1, LAST_AVG_13MO = -1;
+unsigned long LAST_HEARTBEAT = 0;
 
-    String topic = String(MQTT_ROOT_TOPIC) + "/" + name;
-    send_mqtt_message(topic.c_str(), output);
+void send_metric(const char* name, long metric, long& last_value)
+{
+    // Heartbeat: Send every 60s even if no change, OR if value changed
+    if (metric != last_value || (millis() - LAST_HEARTBEAT > 60000)) {
+        char topic[128];
+        char payload[16];
+        
+        // Build topic efficiently without using String objects
+        snprintf(topic, sizeof(topic), "%s/%s", MQTT_ROOT_TOPIC, name);
+        ltoa(metric, payload, 10);
+        
+        if (mqtt_client.publish(topic, payload, false)) {
+            last_value = metric; 
+        }
+    }
 }
 
 void send_data_to_broker()
 {
-    send_metric("consumption_low_tarif", CONSUMPTION_LOW_TARIF);
-    send_metric("consumption_high_tarif", CONSUMPTION_HIGH_TARIF);
-    send_metric("returndelivery_low_tarif", RETURNDELIVERY_LOW_TARIF);
-    send_metric("returndelivery_high_tarif", RETURNDELIVERY_HIGH_TARIF);
-    send_metric("actual_consumption", ACTUAL_CONSUMPTION);
-    send_metric("actual_returndelivery", ACTUAL_RETURNDELIVERY);
+    set_milestone(5); // Milestone 5: Sending MQTT
+    
+    send_metric("consumption_low_tarif", CONSUMPTION_LOW_TARIF, LAST_CON_LOW);
+    send_metric("consumption_high_tarif", CONSUMPTION_HIGH_TARIF, LAST_CON_HIGH);
+    send_metric("returndelivery_low_tarif", RETURNDELIVERY_LOW_TARIF, LAST_RET_LOW);
+    send_metric("returndelivery_high_tarif", RETURNDELIVERY_HIGH_TARIF, LAST_RET_HIGH);
+    send_metric("actual_consumption", ACTUAL_CONSUMPTION, LAST_ACT_CON);
+    send_metric("actual_returndelivery", ACTUAL_RETURNDELIVERY, LAST_ACT_RET);
 
-    send_metric("l1_instant_power_usage", L1_INSTANT_POWER_USAGE);
-    send_metric("l2_instant_power_usage", L2_INSTANT_POWER_USAGE);
-    send_metric("l3_instant_power_usage", L3_INSTANT_POWER_USAGE);
-    send_metric("l1_instant_power_current", L1_INSTANT_POWER_CURRENT);
-    send_metric("l2_instant_power_current", L2_INSTANT_POWER_CURRENT);
-    send_metric("l3_instant_power_current", L3_INSTANT_POWER_CURRENT);
-    send_metric("l1_voltage", L1_VOLTAGE);
-    send_metric("l2_voltage", L2_VOLTAGE);
-    send_metric("l3_voltage", L3_VOLTAGE);
+    send_metric("l1_instant_power_usage", L1_INSTANT_POWER_USAGE, LAST_L1_P);
+    send_metric("l2_instant_power_usage", L2_INSTANT_POWER_USAGE, LAST_L2_P);
+    send_metric("l3_instant_power_usage", L3_INSTANT_POWER_USAGE, LAST_L3_P);
+    send_metric("l1_instant_power_current", L1_INSTANT_POWER_CURRENT, LAST_L1_C);
+    send_metric("l2_instant_power_current", L2_INSTANT_POWER_CURRENT, LAST_L2_C);
+    send_metric("l3_instant_power_current", L3_INSTANT_POWER_CURRENT, LAST_L3_C);
+    send_metric("l1_voltage", L1_VOLTAGE, LAST_L1_V);
+    send_metric("l2_voltage", L2_VOLTAGE, LAST_L2_V);
+    send_metric("l3_voltage", L3_VOLTAGE, LAST_L3_V);
 
-    send_metric("gas_meter_m3", GAS_METER_M3);
+    send_metric("gas_meter_m3", GAS_METER_M3, LAST_GAS);
 
-    send_metric("actual_tarif_group", ACTUAL_TARIF);
-    send_metric("short_power_outages", SHORT_POWER_OUTAGES);
-    send_metric("long_power_outages", LONG_POWER_OUTAGES);
-    send_metric("short_power_drops", SHORT_POWER_DROPS);
-    send_metric("short_power_peaks", SHORT_POWER_PEAKS);
+    send_metric("actual_tarif_group", ACTUAL_TARIF, LAST_TARIF);
+    send_metric("short_power_outages", SHORT_POWER_OUTAGES, LAST_S_OUT);
+    send_metric("long_power_outages", LONG_POWER_OUTAGES, LAST_L_OUT);
+    send_metric("short_power_drops", SHORT_POWER_DROPS, LAST_S_DROP);
+    send_metric("short_power_peaks", SHORT_POWER_PEAKS, LAST_S_PEAK);
 
-    send_metric("actual_average_15m_peak", mActualAverage15mPeak);
-    send_metric("thismonth_max_15m_peak", mMax15mPeakThisMonth);
-    send_metric("last13months_average_15m_peak", mAverage15mPeakLast13months);
-    send_mqtt_message((String(MQTT_ROOT_TOPIC) + "/" + "last13months_peaks_json").c_str(), Last13MonthsPeaks_json); // bypassed send_metric() for Json message.
-    Last13MonthsPeaks_json.clear(); // clear memory for the GLOBAL JsonDocument.
+    send_metric("actual_average_15m_peak", mActualAverage15mPeak, LAST_AVG_15M);
+    send_metric("thismonth_max_15m_peak", mMax15mPeakThisMonth, LAST_MAX_15M);
+    send_metric("last13months_average_15m_peak", mAverage15mPeakLast13months, LAST_AVG_13MO);
+
+    if (millis() - LAST_HEARTBEAT > 60000) {
+        LAST_HEARTBEAT = millis();
+    }
+    
+    // For the large JSON, we always send it if there is data, as change detection is complex for JSON
+    if (!Last13MonthsPeaks_json.isNull()) {
+        char topic[128];
+        snprintf(topic, sizeof(topic), "%s/last13months_peaks_json", MQTT_ROOT_TOPIC);
+        send_mqtt_message(topic, Last13MonthsPeaks_json); 
+    }
+    
+    Last13MonthsPeaks_json.clear(); 
+    set_milestone(3); // Milestone 3: Running (Back to normal loop)
 }
 
 // **********************************
@@ -200,7 +242,7 @@ unsigned int CRC16(unsigned int crc, unsigned char *buf, int len)
     return crc;
 }
 
-bool isNumber(char *res, int len)
+bool isNumber(const char *res, int len)
 {
     for (int i = 0; i < len; i++)
     {
@@ -210,7 +252,7 @@ bool isNumber(char *res, int len)
     return true;
 }
 
-int FindCharInArrayRev(char array[], char c, int len)
+int FindCharInArrayRev(const char array[], char c, int len)
 {
     for (int i = len - 1; i >= 0; i--)
     {
@@ -220,10 +262,12 @@ int FindCharInArrayRev(char array[], char c, int len)
     return -1;
 }
 
-long getValue(char *buffer, int maxlen, char startchar, char endchar) // should have more than 4 chars.
+long getValue(const char *buffer, int maxlen, char startchar, char endchar) // should have more than 4 chars.
 {
     int s = FindCharInArrayRev(buffer, startchar, maxlen - 2);
+    if (s < 0) return 0;
     int l = FindCharInArrayRev(buffer, endchar, maxlen - 2) - s - 1;
+    if (l <= 0 || l >= 16) return 0;
 
     char res[16];
     memset(res, 0, sizeof(res));
@@ -245,15 +289,8 @@ long getValue(char *buffer, int maxlen, char startchar, char endchar) // should 
     return 0;
 }
 
-char *stringToCharArray(string s)
-{
-    const int length = s.length();
-    char *char_array = new char[length + 1];
-    return strcpy(char_array, s.c_str());
-}
-
 // returns an array of values '(02.314)'
-vector<string> parseStringIntoVectorArray(char *input)
+vector<string> parseStringIntoVectorArray(const char *input)
 {
     string s(input);
 
@@ -492,60 +529,46 @@ bool decode_telegram(int len)
     if (strncmp(telegram, "1-0:1.6.0", strlen("1-0:1.6.0")) == 0)
         mMax15mPeakThisMonth = getValue(telegram, len, '(', '*');
 
-    // 0-0:98.1.0 = quart_hourly_peak_consumption_last_13months
-    // 0-0:98.1.0(3)(1-0:1.6.0)(1-0:1.6.0)(200501000000S)(200423192538S)(03.695*kW)(200401000000S)(200305122139S)(05.980*kW)(200301000000S)(200210035421W)(04.318*kW)
-    /*
-     * Line format:
-        'ID (Count) (ID) (ID) (TST) (TST) (Mv1*U1)'
-         1  2       3    4    5     6     7
-        1) OBIS Reduced ID-code
-        2) Amount of values in the response
-        3) ID of the source
-        4) ^^
-        5) Time Stamp (TST) of the month
-        6) Time Stamp (TST) when the max demand occured
-        6) Measurement value 1 (most recent entry of buffer attribute without unit)
-        7) Unit of measurement values (Unit of capture objects attribute)
-    */
     if (strncmp(telegram, "0-0:98.1.0", strlen("0-0:98.1.0")) == 0)
     {
+        Last13MonthsPeaks_json.clear(); // Ensure document is empty before populating
         vector<string> output = parseStringIntoVectorArray(telegram); // parse telegram into array of strings based on the parentheses '(' ')'
 
-        unsigned long count = stol(output[0].substr(1, output[0].size() - 2));
-        mAverage15mPeakLast13months = count;
-        vector<long> valuesArray;
-
-        // create JsonObject from values telegram
-        Last13MonthsPeaks_json["count"] = count;
-        Last13MonthsPeaks_json["unit"] = "W";
-        JsonArray peakvalues = Last13MonthsPeaks_json.createNestedArray("values");
-
-        for (unsigned int i = 3; i < output.size(); i += 3)
+        if (output.size() > 0)
         {
-            //to filter only the VALUES of the last 12months, I need to loop through the values starting from i=3 and only take the 3th value.
-            // '(Count) (ID) (ID) (TST) (TST) (Mv1*U1) (TST) (TST) (Mv2*U2)'
-            //  0       1    2    3     4     5         6     7    8       ..... 41 (for 12months)
-            valuesArray.push_back(getValue(stringToCharArray(output[i + 2]), output[i + 2].size(), '(', '*')); // capture only values in the valuesArray as long.
+            unsigned long count = stol(output[0].substr(1, output[0].size() - 2));
+            mAverage15mPeakLast13months = count;
+            vector<long> valuesArray;
 
-            JsonObject peakvalue = peakvalues.createNestedObject();
-            peakvalue["value"] = getValue(stringToCharArray(output[i + 2]), output[i + 2].size(), '(', '*'); // remove "*kW" from the string
+            // create JsonObject from values telegram
+            Last13MonthsPeaks_json["count"] = count;
+            Last13MonthsPeaks_json["unit"] = "W";
+            JsonArray peakvalues = Last13MonthsPeaks_json["values"].to<JsonArray>();
+
+            for (unsigned int i = 3; i < output.size(); i += 3)
+            {
+                if (i + 2 < output.size())
+                {
+                    long val = getValue(output[i + 2].c_str(), output[i + 2].size(), '(', '*');
+                    valuesArray.push_back(val);
+                    peakvalues.add(val);
+                }
+            }
+
+            //calculate average peak value.
+            if (valuesArray.size() > 0)
+            {
+                long sum = 0;
+                for (unsigned int i = 0; i < valuesArray.size(); i++)
+                    sum += valuesArray[i];
+                long average = sum / valuesArray.size();
+
+                if (count == valuesArray.size())
+                    mAverage15mPeakLast13months = average;
+                else
+                    mAverage15mPeakLast13months = -1; // detect error value over MQTT.
+            }
         }
-
-        // debug
-        // serializeJsonPretty(Last13MonthsPeaks_json, Serial);
-
-        //calculate average peak value.
-        long sum = 0;
-        for (unsigned int i = 0; i < valuesArray.size(); i++)
-            sum += valuesArray[i];
-        long average = sum / valuesArray.size();
-
-        if (count == valuesArray.size())
-            mAverage15mPeakLast13months = average;
-        else
-            mAverage15mPeakLast13months = -1; // detect error value over MQTT.
-
-        /* */
     }
 
 #pragma endregion
@@ -555,22 +578,19 @@ bool decode_telegram(int len)
 
 void read_p1_hardwareserial()
 {
-
     if (Serial.available())
     {
+        set_milestone(4); // Milestone 4: Reading P1
         memset(telegram, 0, sizeof(telegram));
 
         while (Serial.available())
         {
-            // ESP.wdtDisable();
-            int len = Serial.readBytesUntil('\n', telegram, P1_MAXLINELENGTH);
+            // Read until newline, but leave room for the terminator in our buffer
+            int len = Serial.readBytesUntil('\n', telegram, P1_MAXLINELENGTH - 2);
 
-            // ESP.wdtEnable(1);
-
-            // debug entire telegram
-            // Serial.printf(">>> %s\n", telegram);
-
-            processLine(len);
+            if (len > 0) {
+                processLine(len);
+            }
 
             memset(telegram, 0, sizeof(telegram));
         }
@@ -579,6 +599,11 @@ void read_p1_hardwareserial()
 
 void processLine(int len)
 {
+    // Bounds check to ensure we don't overflow the buffer
+    if (len >= P1_MAXLINELENGTH - 2) {
+        len = P1_MAXLINELENGTH - 3; 
+    }
+    
     telegram[len] = '\n';
     telegram[len + 1] = 0;
     yield();
@@ -588,8 +613,11 @@ void processLine(int len)
 
     if (result)
     {
-        send_data_to_broker();
-        LAST_UPDATE_SENT = millis();
+        if (millis() - LAST_UPDATE_SENT > UPDATE_INTERVAL)
+        {
+            send_data_to_broker();
+            LAST_UPDATE_SENT = millis();
+        }
     }
 }
 
@@ -729,7 +757,28 @@ void setup()
 
     // Setup a hw serial connection for communication with the P1 meter and logging (not using inversion)
     Serial.begin(BAUD_RATE, SERIAL_8N1, SERIAL_FULL);
+    Serial.setTimeout(50); // Shorter timeout for faster line reading
     Serial.println("");
+
+    // Capture the reset reason and milestone
+    ESP.rtcUserMemoryRead(RTC_BASE_ADDR, (uint32_t*)&rtc_data, sizeof(rtc_data));
+    String milestone_name = "Unknown";
+    if (rtc_data.marker == RTC_MARKER) {
+        switch(rtc_data.milestone) {
+            case 1: milestone_name = "Booting"; break;
+            case 2: milestone_name = "WiFi Connecting"; break;
+            case 3: milestone_name = "Running"; break;
+            case 4: milestone_name = "Reading P1"; break;
+            case 5: milestone_name = "Sending MQTT"; break;
+        }
+    }
+    
+    last_reset_info = String("Reason: ") + ESP.getResetReason() + " | Info: " + ESP.getResetInfo() + " | Milestone: " + milestone_name;
+    Serial.println(last_reset_info);
+
+    // Reset milestone for the current session
+    set_milestone(1); // Milestone 1: Booting
+
     Serial.println("Swapping UART0 RX to inverted");
     Serial.flush();
 
@@ -739,6 +788,9 @@ void setup()
 
     // * Set led pin as output
     pinMode(LED_BUILTIN, OUTPUT);
+
+    // * Disable persistent WiFi settings to save flash wear
+    WiFi.persistent(false);
 
     // * Setup Double reset detection
     if (drd.detectDoubleReset())
@@ -794,13 +846,14 @@ void setup()
 
     // * Fetches SSID and pass and tries to connect
     // * Reset when no connection after 10 seconds
+    set_milestone(2); // Milestone 2: WiFi Connecting
     if (!wifiManager.autoConnect())
     {
-        Serial.println(F("Failed to connect to WIFI and hit timeout"));
+        Serial.println(F("Failed to connect to WIFI and hit timeout. Restarting..."));
 
         // * Reset and try again, or maybe put it to deep sleep
-        ESP.reset();
-        delay(WIFI_TIMEOUT);
+        ESP.restart();
+        delay(5000);
     }
 
     // * Read updated parameters
@@ -824,6 +877,7 @@ void setup()
 
     // * If you get here you have connected to the WiFi
     Serial.println(F("Connected to WIFI..."));
+    set_milestone(3); // Milestone 3: Running
 
     // * Keep LED on
     ticker.detach();
@@ -838,6 +892,8 @@ void setup()
     // * Setup MQTT
     Serial.printf("MQTT connecting to: %s:%s\n", MQTT_HOST, MQTT_PORT);
 
+    // Increase MQTT buffer size for peak JSON data
+    mqtt_client.setBufferSize(MQTT_BUFFER_SIZE);
     mqtt_client.setServer(MQTT_HOST, atoi(MQTT_PORT));
 }
 
@@ -847,54 +903,53 @@ void setup()
 
 void loop()
 {
-    // every 2days --> restart board.
-    const unsigned long RESTART_INTERVAL = 2ul * 24ul * 60ul * 60ul * 1000ul;
-    if (millis() > RESTART_INTERVAL)
+    ArduinoOTA.handle();
+    unsigned long now = millis();
+
+    // Check WiFi Status
+    if (WiFi.status() != WL_CONNECTED)
     {
-        Serial.println("++++++++++++++++++++++++++++++++++++++++");
-        Serial.print("trying to restart after 2 days or ms: ");
-        Serial.print(RESTART_INTERVAL);
-        Serial.println("");
-        Serial.println("++++++++++++++++++++++++++++++++++++++++");
-        ESP.restart();
+        if (now - lastReconnectAttempt > 30000)
+        {
+            Serial.println(F("WiFi disconnected! Reconnecting..."));
+            WiFi.reconnect();
+            lastReconnectAttempt = now;
+        }
+        return; // Don't try MQTT if WiFi is down
     }
 
-    ArduinoOTA.handle();
-    long now = millis();
-
+    // MQTT Reconnection logic (non-blocking)
     if (!mqtt_client.connected())
     {
-
-        if (now - LAST_RECONNECT_ATTEMPT > 5000)
+        if (now - lastReconnectAttempt > 5000)
         {
-            LAST_RECONNECT_ATTEMPT = now;
-
+            lastReconnectAttempt = now;
             if (mqtt_reconnect())
             {
-                LAST_RECONNECT_ATTEMPT = 0;
+                lastReconnectAttempt = 0;
             }
         }
     }
     else
     {
-        // Serial.println("start mqtt Loop");
         mqtt_client.loop();
-        // Serial.println("End mqtt Loop");
     }
 
-    if (now - LAST_UPDATE_SENT > UPDATE_INTERVAL)
+    // Read P1 Data
+    // We read continuously to avoid serial buffer overflow
+    if (Serial.available())
     {
-        // Serial.println("start reading serial");
         read_p1_hardwareserial();
     }
 
-    // //debug
-    // Serial.println("End Loop");
-    // Serial.println("--------");
+    // Periodic Heap Logging
+    static unsigned long lastHeapLog = 0;
+    if (now - lastHeapLog > 60000)
+    {
+        lastHeapLog = now;
+        Serial.printf("Free heap: %u bytes\n", ESP.getFreeHeap());
+    }
 
-    // Call the double reset detector loop method every so often,
-    // so that it can recognise when the timeout expires.
-    // You can also call drd.stop() when you wish to no longer
-    // consider the next reset as a double reset.
+    // Call the double reset detector loop
     drd.loop();
 }
