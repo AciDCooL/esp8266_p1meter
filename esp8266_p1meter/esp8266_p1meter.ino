@@ -7,8 +7,10 @@
  * 1.2.1 - Hotfix for MQTT TCP buffer overflow and Client ID collisions.
  * 1.2.2 - Hotfix for HA Device Grouping (Topic structure) and Mobile UI scaling.
  * 1.2.3 - Hotfix for WebUI Save button visibility and dynamic EEPROM defaults.
+ * 1.2.4 - Hotfix for memory corruption in read_eeprom and checkbox ID mismatch.
+ * 1.2.5 - Fix for Gas parsing, robust getValue extraction, and proper scaling for float metrics (Voltage, Current, Frequency).
  */
-#define VERSION "1.2.3"
+#define VERSION "1.2.5"
 
 #include <EEPROM.h>
 #include <DNSServer.h>
@@ -143,6 +145,7 @@ void publish_ha_discovery() {
         {"l1_voltage", "L1 Voltage", "V", "voltage", "measurement", ""},
         {"l2_voltage", "L2 Voltage", "V", "voltage", "measurement", ""},
         {"l3_voltage", "L3 Voltage", "V", "voltage", "measurement", ""},
+        {"frequency", "Frequency", "Hz", "frequency", "measurement", ""},
         {"gas_meter_m3", "Gas Meter", "m³", "gas", "total_increasing", ""},
         {"actual_average_15m_peak", "15m Average Peak", "W", "power", "measurement", ""},
         {"thismonth_max_15m_peak", "This Month Max Peak", "W", "power", "measurement", ""},
@@ -258,17 +261,22 @@ long LAST_TARIF = -1, LAST_S_OUT = -1, LAST_L_OUT = -1, LAST_S_DROP = -1, LAST_S
 long LAST_AVG_15M = -1, LAST_MAX_15M = -1, LAST_AVG_13MO = -1;
 unsigned long LAST_HEARTBEAT = 0;
 
-void send_metric(const char* name, long metric, long& last_value)
+void send_metric(const char* name, long metric, long& last_value, int divisor = 1)
 {
     // Heartbeat: Send every 20s even if no change, OR if value changed
     if (metric != last_value || (millis() - LAST_HEARTBEAT > 20000)) {
         char topic[128];
-        char payload[16];
+        char payload[32];
         
         // Build topic efficiently without using String objects
         snprintf(topic, sizeof(topic), "%s/%s", MQTT_ROOT_TOPIC, name);
-        ltoa(metric, payload, 10);
         
+        if (divisor == 1) {
+            ltoa(metric, payload, 10);
+        } else {
+            dtostrf(metric / (float)divisor, 1, 3, payload);
+        }
+
         if (mqtt_client.publish(topic, payload, false)) {
             last_value = metric; 
         }
@@ -292,14 +300,17 @@ void send_data_to_broker()
     send_metric("l1_instant_power_returndelivery", L1_INSTANT_POWER_RETURNDELIVERY, LAST_L1_R);
     send_metric("l2_instant_power_returndelivery", L2_INSTANT_POWER_RETURNDELIVERY, LAST_L2_R);
     send_metric("l3_instant_power_returndelivery", L3_INSTANT_POWER_RETURNDELIVERY, LAST_L3_R);
-    send_metric("l1_instant_power_current", L1_INSTANT_POWER_CURRENT, LAST_L1_C);
-    send_metric("l2_instant_power_current", L2_INSTANT_POWER_CURRENT, LAST_L2_C);
-    send_metric("l3_instant_power_current", L3_INSTANT_POWER_CURRENT, LAST_L3_C);
-    send_metric("l1_voltage", L1_VOLTAGE, LAST_L1_V);
-    send_metric("l2_voltage", L2_VOLTAGE, LAST_L2_V);
-    send_metric("l3_voltage", L3_VOLTAGE, LAST_L3_V);
+    
+    // Voltage, Current and Gas sent as floats
+    send_metric("l1_instant_power_current", L1_INSTANT_POWER_CURRENT, LAST_L1_C, 1000);
+    send_metric("l2_instant_power_current", L2_INSTANT_POWER_CURRENT, LAST_L2_C, 1000);
+    send_metric("l3_instant_power_current", L3_INSTANT_POWER_CURRENT, LAST_L3_C, 1000);
+    send_metric("l1_voltage", L1_VOLTAGE, LAST_L1_V, 1000);
+    send_metric("l2_voltage", L2_VOLTAGE, LAST_L2_V, 1000);
+    send_metric("l3_voltage", L3_VOLTAGE, LAST_L3_V, 1000);
+    send_metric("frequency", FREQUENCY, LAST_FREQ, 1000);
 
-    send_metric("gas_meter_m3", GAS_METER_M3, LAST_GAS);
+    send_metric("gas_meter_m3", GAS_METER_M3, LAST_GAS, 1000);
 
     send_metric("actual_tarif_group", ACTUAL_TARIF, LAST_TARIF);
     send_metric("short_power_outages", SHORT_POWER_OUTAGES, LAST_S_OUT);
@@ -386,11 +397,15 @@ int FindCharInArrayRev(const char array[], char c, int len)
     return -1;
 }
 
-long getValue(const char *buffer, int maxlen, char startchar, char endchar) // should have more than 4 chars.
+long getValue(const char *buffer, int maxlen, char startchar, char endchar) 
 {
-    int s = FindCharInArrayRev(buffer, startchar, maxlen - 2);
+    int e = FindCharInArrayRev(buffer, endchar, maxlen);
+    if (e < 0) return 0;
+    
+    int s = FindCharInArrayRev(buffer, startchar, e);
     if (s < 0) return 0;
-    int l = FindCharInArrayRev(buffer, endchar, maxlen - 2) - s - 1;
+
+    int l = e - s - 1;
     if (l <= 0 || l >= 16) return 0;
 
     char res[16];
@@ -401,7 +416,6 @@ long getValue(const char *buffer, int maxlen, char startchar, char endchar) // s
         if (endchar == '*')
         {
             if (isNumber(res, l))
-                // * Lazy convert float to long
                 return (1000 * atof(res));
         }
         else if (endchar == ')')
@@ -596,9 +610,15 @@ bool decode_telegram(int len)
         L3_VOLTAGE = getValue(telegram, len, '(', '*');
     }
 
-    // 0-1:24.2.3(150531200000S)(00811.923*m3)
-    // 0-1:24.2.3 = Gas (DSMR v5.0 - fluvius)
-    if (strncmp(telegram, "0-1:24.2.3", strlen("0-1:24.2.3")) == 0)
+    // 0-0:14.7.0(50.0*Hz)
+    // 0-0:14.7.0 = Frequency
+    if (strncmp(telegram, "0-0:14.7.0", strlen("0-0:14.7.0")) == 0)
+    {
+        FREQUENCY = getValue(telegram, len, '(', '*');
+    }
+
+    // Gas Meter Parsing (Supports standard 24.2.1 and Fluvius 24.2.3 across all channels)
+    if (strstr(telegram, "24.2.1") != NULL || strstr(telegram, "24.2.3") != NULL)
     {
         GAS_METER_M3 = getValue(telegram, len, '(', '*');
     }
@@ -756,8 +776,6 @@ void processLine(int len)
 
 void read_eeprom(int offset, int len, char* buffer)
 {
-    Serial.print(F("read_eeprom()"));
-
     for (int i = 0; i < len; ++i)
     {
         buffer[i] = char(EEPROM.read(i + offset));
@@ -767,9 +785,8 @@ void read_eeprom(int offset, int len, char* buffer)
 
 void write_eeprom(int offset, int len, const char* value)
 {
-    Serial.println(F("write_eeprom()"));
     size_t val_len = strlen(value);
-    
+
     for (int i = 0; i < len; ++i)
     {
         char charToWrite = ((unsigned)i < val_len) ? value[i] : 0;
@@ -955,20 +972,20 @@ void setup()
     WiFiManagerParameter CUSTOM_MQTT_PASS("pass", "MQTT pass", MQTT_PASS, 32);
 
     char customhtml[200];
-    snprintf(customhtml, sizeof(customhtml), "type='hidden' id='ha_val_hidden'><label style='color:#0f0;cursor:pointer;display:block;margin:10px 0;'><input type='checkbox' %s onchange=\"document.getElementById('ha_val_hidden').value=this.checked?'1':'0';\"> Enable HA Discovery</label>", HA_AUTO_DISCOVERY ? "checked" : "");
+    snprintf(customhtml, sizeof(customhtml), "type='hidden'><label style='color:#0f0;cursor:pointer;'><input type='checkbox' %s onchange=\"document.getElementById('ha_val').value=this.checked?'1':'0';\"> Enable HA Discovery</label>", HA_AUTO_DISCOVERY ? "checked" : "");
     WiFiManagerParameter CUSTOM_HA_DISCOVERY("ha_val", "", ha_val_str, 2, customhtml);
 
     // * WiFiManager local initialization
     WiFiManager wifiManager;
 
-    // Hacker Style 2026 UI (Clean & Stable)
+    // Hacker Style 2026 UI (Safe Version)
     const char* custom_css = "<style>"
                              "body{background:#0a0a0a;color:#0f0;font-family:monospace;}"
                              ".wrap{max-width:450px;margin:20px auto;border:1px solid #0f0;padding:20px;box-shadow:0 0 10px #0f0;}"
                              "input[type='text'],input[type='password']{background:#111;color:#0f0;border:1px solid #0f0;padding:10px;width:100%;box-sizing:border-box;margin-bottom:10px;}"
-                             "input[type='submit'],button{background:#0f0;color:#000;border:none;padding:15px;width:100%;font-weight:bold;cursor:pointer;margin-top:10px;}"
-                             "div,label,a{color:#0f0 !important;}"
+                             "input[type='submit'],input[type='button'],button{background:#0f0 !important;color:#000 !important;border:none !important;padding:15px !important;width:100% !important;font-weight:bold !important;cursor:pointer !important;display:block !important;}"
                              "h1{text-align:center;text-shadow:0 0 5px #0f0;}"
+                             "div,label,a{color:#0f0;}"
                              "</style>";
     wifiManager.setCustomHeadElement(custom_css);
 

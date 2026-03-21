@@ -1,4 +1,3 @@
-
   ______  _____ _____   ___ ___   __   __   ___  __   __ ___ _____ ___ ___ 
  |  ____|/ ____|  __ \ / _ \__ \ / /  /_ | |__ \/_ | / /|__ \____ |__ \__ \
  | |__  | (___ | |__) | (_) | ) / /_   | |    ) || |/ /_   ) |  / /  ) | ) |
@@ -6,7 +5,7 @@
  | |____ ____) | |       / /|_| (_) |  | |  / /_ | | (_) / /_ / /  / /_|_| 
  |______|_____/|_|      /_/(_) \___/   |_| |____||_|\___/____/_/  |____(_)
                                                                            
-# ⚡ ESP8266 P1-METER ⚡ [v1.2.3 - 2026 EDITION]
+# ⚡ ESP8266 P1-METER ⚡ [v1.2.5 - 2026 EDITION]
 
 > "Stabilizing the grid, one telegram at a time." 🛠️💊
 
@@ -14,21 +13,21 @@ This is a high-performance, ultra-stable P1 Meter firmware for the **Wemos D1 Mi
 
 ---
 
-## 🚀 WHAT'S NEW IN v1.2.3 (THE "NO-CRASH" PATCH)
+## 🚀 WHAT'S NEW IN v1.2.5 (THE "NO-CRASH" PATCH)
 
 We went through the code with a fine-toothed comb to ensure this thing runs for months without a stutter. 
 
 *   **⚡ 1s REAL-TIME UPDATES:** Polling interval reduced from 30s to 1s. Catch those power spikes as they happen.
 *   **🧠 HEAP PROTECTION (Anti-Frag Engine):** Scrubbed all `String` and `std::vector` objects from the transmission loop. We parse the datagram entirely in-place. Zero allocations = zero memory "Swiss cheese" fragmentation = infinite uptime.
-*   **🏠 HOME ASSISTANT AUTO-DISCOVERY:** Enable it in the WebUI, and your meter instantly appears in Home Assistant with 24 fully configured sensors. No YAML required!
+*   **🏠 HOME ASSISTANT AUTO-DISCOVERY:** Enable it in the WebUI, and your meter instantly appears in Home Assistant with 25 fully configured sensors. No YAML required!
     *   **Native Energy Dashboard:** Fully tagged with the correct `state_class` and `device_class` to work out-of-the-box with HA's built-in Energy tracking.
-    *   **LWT (Last Will & Testament):** Your meter now has a persistent status topic. If it loses power, Home Assistant immediately marks all 24 sensors as "Unavailable".
+    *   **LWT (Last Will & Testament):** Your meter now has a persistent status topic. If it loses power, Home Assistant immediately marks all 25 sensors as "Unavailable".
     *   **Diagnostic Sensors:** Monitor the ESP's **WiFi RSSI (Signal Strength)** and **Local IP Address** straight from the Home Assistant device page.
-    *   **TCP Overflow Protection:** (v1.2.1) The massive discovery payload is now metered to prevent the ESP8266 WiFi stack from choking on boot.
+    *   **TCP Overflow Protection:** The massive discovery payload is now metered to prevent the ESP8266 WiFi stack from choking on boot.
 *   **🕵️ SMART CHANGE DETECTION:** Only sends MQTT data if the value actually changes (with a 20s heartbeat). Saves your WiFi and your MQTT broker from unnecessary noise.
 *   **🛡️ STACK SAFETY:** Moved large MQTT buffers to static memory. Say goodbye to Stack Overflows.
 *   **💾 CRASH REPORTING:** If it reboots, it tells you *why* over MQTT (`/last_reset`). Milestone tracking pinpointing exactly where it failed.
-*   **😎 HACKER WEB-UI:** The WiFi config portal has been upgraded with a lean, neon-green "terminal" aesthetic.
+*   **😎 HACKER WEB-UI:** The WiFi config portal has been upgraded with a lean, neon-green "terminal" aesthetic. Fully mobile-responsive and state-aware.
 *   **🧱 BUFFER & EEPROM HARDENING:** Fixed the infamous `telegram` array overflow that was wiping WiFi settings, and added a read-before-write check to massively extend EEPROM lifespan.
 
 ---
@@ -37,14 +36,14 @@ We went through the code with a fine-toothed comb to ensure this thing runs for 
 
 ### 🛡️ THE "ANTI-FRAG" ENGINE (Heap Protection)
 The original code used `std::string`, `String`, and vectors for parsing. On an ESP8266, this is a death sentence. Every time you create a `String`, it allocates RAM. 
-**v1.2.0** uses `snprintf`, direct `char*` pointer iteration, and fixed buffers. It reads the 13-month peak history directly out of the raw byte array without creating a single copy. 
+**v1.2.5** uses `snprintf`, direct `char*` pointer iteration, and fixed buffers. It reads data directly out of the raw byte array without creating copies. 
 
 ### 📉 SMART CHANGE DETECTION (Efficiency)
 Modern P1 meters (DSMR 5.0) blast data every second. Sending 20+ MQTT messages every second is a massive waste of WiFi juice and CPU cycles. 
-**v1.2.0** caches the last value of every single sensor. It only hits the radio if the value moves or if the 20s "heartbeat" timer hits. Your Home Assistant gets instant updates on power spikes, but stays quiet when nothing is happening. 🤫
+**v1.2.5** caches the last value of every single sensor. It only hits the radio if the value moves or if the 20s "heartbeat" timer hits. Your Home Assistant gets instant updates on power spikes, but stays quiet when nothing is happening. 🤫
 
 ### 🧬 POST-MORTEM TELEMETRY (Crash Debugging)
-Ever wonder why your ESP just "stopped" responding? **v1.2.0** captures the `ResetReason` from the bootloader and the `Milestone` from RTC memory. 
+Ever wonder why your ESP just "stopped" responding? **v1.2.5** captures the `ResetReason` from the bootloader and the `Milestone` from RTC memory. 
 - **Milestones:** We track if it was `Booting`, `WiFi Connecting`, `Reading P1`, or `Sending MQTT` when it died. 
 - **MQTT Report:** On the next boot, it publishes the full autopsy report to `.../last_reset`.
 
@@ -68,9 +67,11 @@ Your automations stay the same. We kept the legacy structure but made it faster 
 | Topic | Description |
 | :--- | :--- |
 | `sensors/power/p1meter/actual_consumption` | Instant W usage |
-| `sensors/power/p1meter/l1_instant_power_usage` | **NEW:** L1, L2, L3 Usage (W) |
-| `sensors/power/p1meter/l1_instant_power_returndelivery` | **NEW:** L1, L2, L3 Return (W) |
-| `sensors/power/p1meter/last_reset` | **NEW:** Post-mortem crash report |
+| `sensors/power/p1meter/l1_instant_power_usage` | L1, L2, L3 Usage (W) |
+| `sensors/power/p1meter/l1_voltage` | **NEW:** L1, L2, L3 Voltage (V) |
+| `sensors/power/p1meter/frequency` | **NEW:** Line Frequency (Hz) |
+| `sensors/power/p1meter/gas_meter_m3` | Gas Meter (m³) |
+| `sensors/power/p1meter/last_reset` | Post-mortem crash report |
 | `hass/status` | Online/Offline status with Version ID |
 
 *(Note: Enabling Home Assistant Auto-Discovery does **not** change these topics. It just maps them for HA automatically).*
@@ -110,7 +111,9 @@ For security and performance, the WebUI **shuts down** once the meter connects t
 ---
 
 ### 📜 VERSION HISTORY
-- **v1.2.3** - 2026-03-20: Hotfix - Fixed WebUI 'Save' button visibility and added dynamic EEPROM state-awareness (pre-fills existing credentials on Double Reset).
+- **v1.2.5** - 2026-03-20: Refactored P1 parsing for Gas (supports standard and Fluvius codes). Fixed robust getValue extraction (missing characters fix). Added proper float scaling for Voltage, Current, and Frequency topics.
+- **v1.2.4** - 2026-03-20: Hotfix - Memory corruption fix in EEPROM read and checkbox ID mismatch.
+- **v1.2.3** - 2026-03-20: Hotfix - Fixed WebUI 'Save' button visibility and added dynamic EEPROM state-awareness.
 - **v1.2.2** - 2026-03-20: Hotfix - Fixed HA Auto-Discovery topic structure to properly group all entities into a single "Device" in Home Assistant. Upgraded Hacker WebUI to be mobile-responsive.
 - **v1.2.1** - 2026-03-20: Hotfix - MQTT TCP buffer overflow protection and Client ID collision fix during HA discovery burst.
 - **v1.2.0** - 2026-03-20: HA Auto-Discovery, Hacker UI, 3-Phase Metrics, Zero-Allocation Anti-Frag Engine.

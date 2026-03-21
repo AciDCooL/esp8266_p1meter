@@ -58,10 +58,10 @@ long LAST_RECONNECT_ATTEMPT = 0;
 long LAST_UPDATE_SENT = 0;
 
 // * To be filled with EEPROM data
-char MQTT_HOST[64] = "192.168.1.100";
-char MQTT_PORT[6] = "1883";
-char MQTT_USER[32] = "mqtt_user";
-char MQTT_PASS[32] = "mqtt_pass";
+char MQTT_HOST[65] = "192.168.1.100";
+char MQTT_PORT[7] = "1883";
+char MQTT_USER[33] = "mqtt_user";
+char MQTT_PASS[33] = "mqtt_pass";
 
 // * Set to store received telegram
 char telegram[P1_MAXLINELENGTH];
@@ -89,6 +89,7 @@ long L3_INSTANT_POWER_CURRENT;
 long L1_VOLTAGE;
 long L2_VOLTAGE;
 long L3_VOLTAGE;
+long FREQUENCY;
 
 // Set to store data counters read
 long ACTUAL_TARIF;
