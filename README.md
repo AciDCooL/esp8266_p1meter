@@ -99,6 +99,13 @@ Your automations stay the same. We kept the legacy structure but made it faster 
 4. Check the **"Enable HA Auto-Discovery"** box if you use Home Assistant.
 5. Click Save. It will reboot and start streaming data!
 
+### 🔄 How to change settings later (Re-accessing the WebUI)
+For security and performance, the WebUI **shuts down** once the meter connects to your WiFi. If you ever need to change your MQTT broker IP or WiFi password, use the **Double Reset** method:
+1. Press the physical **RST (Reset) button** on your D1 Mini.
+2. Wait a second, then **press it again** (must be within 10 seconds of the first press).
+3. The internal LED will start flashing rapidly, indicating the settings have been wiped.
+4. The `p1meter` Access Point and WebUI will now be broadcasting again.
+
 ---
 
 ### 📜 VERSION HISTORY
