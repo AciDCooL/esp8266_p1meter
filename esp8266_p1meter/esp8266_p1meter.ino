@@ -259,6 +259,7 @@ long LAST_L1_P = -1, LAST_L2_P = -1, LAST_L3_P = -1, LAST_L1_C = -1, LAST_L2_C =
 long LAST_L1_R = -1, LAST_L2_R = -1, LAST_L3_R = -1;
 long LAST_TARIF = -1, LAST_S_OUT = -1, LAST_L_OUT = -1, LAST_S_DROP = -1, LAST_S_PEAK = -1;
 long LAST_AVG_15M = -1, LAST_MAX_15M = -1, LAST_AVG_13MO = -1;
+long LAST_FREQ = -1;
 unsigned long LAST_HEARTBEAT = 0;
 
 void send_metric(const char* name, long metric, long& last_value, int divisor = 1)
