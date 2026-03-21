@@ -6,7 +6,7 @@
  | |____ ____) | |       / /|_| (_) |  | |  / /_ | | (_) / /_ / /  / /_|_| 
  |______|_____/|_|      /_/(_) \___/   |_| |____||_|\___/____/_/  |____(_)
                                                                            
-# ⚡ ESP8266 P1-METER ⚡ [v1.2.2 - 2026 EDITION]
+# ⚡ ESP8266 P1-METER ⚡ [v1.2.3 - 2026 EDITION]
 
 > "Stabilizing the grid, one telegram at a time." 🛠️💊
 
@@ -14,7 +14,7 @@ This is a high-performance, ultra-stable P1 Meter firmware for the **Wemos D1 Mi
 
 ---
 
-## 🚀 WHAT'S NEW IN v1.2.2 (THE "NO-CRASH" PATCH)
+## 🚀 WHAT'S NEW IN v1.2.3 (THE "NO-CRASH" PATCH)
 
 We went through the code with a fine-toothed comb to ensure this thing runs for months without a stutter. 
 
@@ -110,6 +110,7 @@ For security and performance, the WebUI **shuts down** once the meter connects t
 ---
 
 ### 📜 VERSION HISTORY
+- **v1.2.3** - 2026-03-20: Hotfix - Fixed WebUI 'Save' button visibility and added dynamic EEPROM state-awareness (pre-fills existing credentials on Double Reset).
 - **v1.2.2** - 2026-03-20: Hotfix - Fixed HA Auto-Discovery topic structure to properly group all entities into a single "Device" in Home Assistant. Upgraded Hacker WebUI to be mobile-responsive.
 - **v1.2.1** - 2026-03-20: Hotfix - MQTT TCP buffer overflow protection and Client ID collision fix during HA discovery burst.
 - **v1.2.0** - 2026-03-20: HA Auto-Discovery, Hacker UI, 3-Phase Metrics, Zero-Allocation Anti-Frag Engine.

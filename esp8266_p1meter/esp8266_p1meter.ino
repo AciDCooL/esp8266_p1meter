@@ -6,8 +6,9 @@
  * 1.2.0 - Added change detection, heap protection (no String objects), static MQTT buffer, and 1s updates.
  * 1.2.1 - Hotfix for MQTT TCP buffer overflow and Client ID collisions.
  * 1.2.2 - Hotfix for HA Device Grouping (Topic structure) and Mobile UI scaling.
+ * 1.2.3 - Hotfix for WebUI Save button visibility and dynamic EEPROM defaults.
  */
-#define VERSION "1.2.2"
+#define VERSION "1.2.3"
 
 #include <EEPROM.h>
 #include <DNSServer.h>
