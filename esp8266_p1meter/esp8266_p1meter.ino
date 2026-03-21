@@ -955,28 +955,21 @@ void setup()
     WiFiManagerParameter CUSTOM_MQTT_PASS("pass", "MQTT pass", MQTT_PASS, 32);
 
     char customhtml[200];
-    snprintf(customhtml, sizeof(customhtml), "type=\"hidden\" id=\"ha_val\"><label style=\"color:#0f0;cursor:pointer;display:flex;align-items:center;margin-top:15px;font-size:18px;\"><input type=\"checkbox\" style=\"width:24px;height:24px;margin-right:10px;\" %s onchange=\"document.getElementById('ha_val').value=this.checked?'1':'0';\"> Enable HA Discovery</label><br/>", HA_AUTO_DISCOVERY ? "checked" : "");
+    snprintf(customhtml, sizeof(customhtml), "type='hidden' id='ha_val_hidden'><label style='color:#0f0;cursor:pointer;display:block;margin:10px 0;'><input type='checkbox' %s onchange=\"document.getElementById('ha_val_hidden').value=this.checked?'1':'0';\"> Enable HA Discovery</label>", HA_AUTO_DISCOVERY ? "checked" : "");
     WiFiManagerParameter CUSTOM_HA_DISCOVERY("ha_val", "", ha_val_str, 2, customhtml);
 
-    // * WiFiManager local initialization. Once its business is done, there is no need to keep it around
+    // * WiFiManager local initialization
     WiFiManager wifiManager;
 
-    // Mobile-Friendly Hacker Style 2026 UI + Back Button Injector
-    const char* custom_css = "<meta name='viewport' content='width=device-width,initial-scale=1.0'>"
-                             "<style>"
-                             "body{background:#0a0a0a;color:#0f0;font-family:'Courier New',monospace;}"
-                             ".wrap{max-width:450px;width:90%;margin:20px auto;border:1px solid #0f0;padding:20px;box-shadow:0 0 15px #0f0;}"
+    // Hacker Style 2026 UI (Clean & Stable)
+    const char* custom_css = "<style>"
+                             "body{background:#0a0a0a;color:#0f0;font-family:monospace;}"
+                             ".wrap{max-width:450px;margin:20px auto;border:1px solid #0f0;padding:20px;box-shadow:0 0 10px #0f0;}"
+                             "input[type='text'],input[type='password']{background:#111;color:#0f0;border:1px solid #0f0;padding:10px;width:100%;box-sizing:border-box;margin-bottom:10px;}"
+                             "input[type='submit'],button{background:#0f0;color:#000;border:none;padding:15px;width:100%;font-weight:bold;cursor:pointer;margin-top:10px;}"
+                             "div,label,a{color:#0f0 !important;}"
                              "h1{text-align:center;text-shadow:0 0 5px #0f0;}"
-                             "input[type='text'],input[type='password']{background:#111;color:#0f0;border:1px solid #0f0;padding:12px;width:100%;box-sizing:border-box;margin-bottom:10px;}"
-                             "button,a,input[type='submit'],input[type='button']{display:block !important;width:100% !important;background:#0f0 !important;color:#000 !important;padding:15px !important;text-align:center;text-decoration:none;font-weight:bold;margin-top:15px;border:none;cursor:pointer;font-size:18px;}"
-                             "button:hover,a:hover,input:hover{background:#0a0 !important;}"
-                             "div,label{color:#0f0 !important;}"
-                             "</style>"
-                             "<script>"
-                             "window.onload=function(){"
-                             "if(window.location.pathname!=='/'){var b=document.createElement('a');b.href='/';b.innerHTML='&laquo; BACK TO MENU';document.querySelector('.wrap').appendChild(b);}"
-                             "}"
-                             "</script>";
+                             "</style>";
     wifiManager.setCustomHeadElement(custom_css);
 
     // * Reset settings - uncomment for testing
