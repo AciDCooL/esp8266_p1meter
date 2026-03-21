@@ -6,7 +6,7 @@
  | |____ ____) | |       / /|_| (_) |  | |  / /_ | | (_) / /_ / /  / /_|_| 
  |______|_____/|_|      /_/(_) \___/   |_| |____||_|\___/____/_/  |____(_)
                                                                            
-# ⚡ ESP8266 P1-METER ⚡ [v1.2.0 - 2026 EDITION]
+# ⚡ ESP8266 P1-METER ⚡ [v1.2.1 - 2026 EDITION]
 
 > "Stabilizing the grid, one telegram at a time." 🛠️💊
 
@@ -14,7 +14,7 @@ This is a high-performance, ultra-stable P1 Meter firmware for the **Wemos D1 Mi
 
 ---
 
-## 🚀 WHAT'S NEW IN v1.2.0 (THE "NO-CRASH" PATCH)
+## 🚀 WHAT'S NEW IN v1.2.1 (THE "NO-CRASH" PATCH)
 
 We went through the code with a fine-toothed comb to ensure this thing runs for months without a stutter. 
 
@@ -24,6 +24,7 @@ We went through the code with a fine-toothed comb to ensure this thing runs for 
     *   **Native Energy Dashboard:** Fully tagged with the correct `state_class` and `device_class` to work out-of-the-box with HA's built-in Energy tracking.
     *   **LWT (Last Will & Testament):** Your meter now has a persistent status topic. If it loses power, Home Assistant immediately marks all 24 sensors as "Unavailable".
     *   **Diagnostic Sensors:** Monitor the ESP's **WiFi RSSI (Signal Strength)** and **Local IP Address** straight from the Home Assistant device page.
+    *   **TCP Overflow Protection:** (v1.2.1) The massive discovery payload is now metered to prevent the ESP8266 WiFi stack from choking on boot.
 *   **🕵️ SMART CHANGE DETECTION:** Only sends MQTT data if the value actually changes (with a 20s heartbeat). Saves your WiFi and your MQTT broker from unnecessary noise.
 *   **🛡️ STACK SAFETY:** Moved large MQTT buffers to static memory. Say goodbye to Stack Overflows.
 *   **💾 CRASH REPORTING:** If it reboots, it tells you *why* over MQTT (`/last_reset`). Milestone tracking pinpointing exactly where it failed.
@@ -109,6 +110,7 @@ For security and performance, the WebUI **shuts down** once the meter connects t
 ---
 
 ### 📜 VERSION HISTORY
+- **v1.2.1** - 2026-03-20: Hotfix - MQTT TCP buffer overflow protection and Client ID collision fix during HA discovery burst.
 - **v1.2.0** - 2026-03-20: HA Auto-Discovery, Hacker UI, 3-Phase Metrics, Zero-Allocation Anti-Frag Engine.
 - **v1.1.0** - Buffer overflow fixes, MQTT buffer increase, and Crash milestones.
 - **v1.0.0** - The OG release.

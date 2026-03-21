@@ -4,8 +4,9 @@
  * 1.0.0 - Original version
  * 1.1.0 - Fixed buffer overflow, increased MQTT buffer, added crash reporting & milestones
  * 1.2.0 - Added change detection, heap protection (no String objects), static MQTT buffer, and 1s updates.
+ * 1.2.1 - Hotfix for MQTT TCP buffer overflow and Client ID collisions.
  */
-#define VERSION "1.2.0"
+#define VERSION "1.2.1"
 
 #include <EEPROM.h>
 #include <DNSServer.h>
