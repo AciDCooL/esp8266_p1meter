@@ -162,7 +162,7 @@ void publish_ha_discovery() {
     for (const auto& sensor : sensors) {
         doc.clear();
         
-        snprintf(topic, sizeof(topic), "%s/sensor/p1meter_%s/config", HA_DISCOVERY_PREFIX, sensor.id);
+        snprintf(topic, sizeof(topic), "%s/sensor/p1meter/%s/config", HA_DISCOVERY_PREFIX, sensor.id);
         
         doc["name"] = sensor.name;
         
