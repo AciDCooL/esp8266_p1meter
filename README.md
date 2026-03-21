@@ -78,10 +78,26 @@ Your automations stay the same. We kept the legacy structure but made it faster 
 
 ## 🎮 INSTALLATION
 
-1. Open `esp8266_p1meter.ino` in VS Code + PlatformIO.
-2. Edit `settings.h` for your specific needs (though defaults are now ⚡ cracked).
-3. Flash that 💩.
-4. If it's your first time, connect to the `p1meter` AP. You'll be greeted by the new Hacker UI. Feed it your MQTT creds and check the "Enable HA Auto-Discovery" box if you use Home Assistant.
+### Option 1: PlatformIO (Recommended)
+1. Open the project folder in **VS Code** with the **PlatformIO** extension.
+2. Edit `esp8266_p1meter/settings.h` for your specific needs (though defaults are now ⚡ cracked).
+3. Click **Upload**. PlatformIO will automatically download all required libraries and flash the board.
+
+### Option 2: Arduino IDE
+1. Open `esp8266_p1meter/esp8266_p1meter.ino` in the Arduino IDE.
+2. Go to **Sketch > Include Library > Manage Libraries...** and install the following:
+   - `WiFiManager` by tzapu (v2.0+)
+   - `PubSubClient` by Nick O'Leary
+   - `DoubleResetDetector` by Stephen Denne
+   - `ArduinoJson` by Benoit Blanchon (v7.0+)
+3. Edit `settings.h`, connect your board, and click **Upload**.
+
+### First Boot Setup
+1. Connect to the new `p1meter` WiFi Access Point.
+2. You'll be greeted by the neon Hacker UI.
+3. Feed it your WiFi and MQTT credentials.
+4. Check the **"Enable HA Auto-Discovery"** box if you use Home Assistant.
+5. Click Save. It will reboot and start streaming data!
 
 ---
 
