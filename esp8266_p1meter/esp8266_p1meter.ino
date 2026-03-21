@@ -953,14 +953,29 @@ void setup()
     WiFiManagerParameter CUSTOM_MQTT_PASS("pass", "MQTT pass", MQTT_PASS, 32);
 
     char customhtml[200];
-    snprintf(customhtml, sizeof(customhtml), "type=\"hidden\" id=\"ha_val\"><label style=\"color:#0f0;cursor:pointer;\"><input type=\"checkbox\" %s onchange=\"document.getElementById('ha_val').value=this.checked?'1':'0';\"> Enable HA Auto-Discovery</label><br", HA_AUTO_DISCOVERY ? "checked" : "");
+    snprintf(customhtml, sizeof(customhtml), "type=\"hidden\" id=\"ha_val\"><label style=\"color:#0f0;cursor:pointer;display:flex;align-items:center;margin-top:15px;font-size:18px;\"><input type=\"checkbox\" style=\"width:24px;height:24px;margin-right:10px;\" %s onchange=\"document.getElementById('ha_val').value=this.checked?'1':'0';\"> Enable HA Discovery</label><br/>", HA_AUTO_DISCOVERY ? "checked" : "");
     WiFiManagerParameter CUSTOM_HA_DISCOVERY("ha_val", "", ha_val_str, 2, customhtml);
 
     // * WiFiManager local initialization. Once its business is done, there is no need to keep it around
     WiFiManager wifiManager;
 
-    // Hacker Style 2026 UI
-    const char* custom_css = "<style>body{background:#0a0a0a;color:#0f0;font-family:'Courier New',Courier,monospace;}input{background:#111;color:#0f0;border:1px solid #0f0;padding:8px;}button{background:#0f0;color:#000;border:none;padding:10px 20px;cursor:pointer;font-weight:bold;margin-top:10px;}button:hover{background:#0a0;}.wrap{max-width:400px;margin:20px auto;border:1px solid #0f0;padding:20px;box-shadow:0 0 10px #0f0;}h1{text-align:center;text-shadow:0 0 5px #0f0;}div,a{color:#0f0;}</style>";
+    // Mobile-Friendly Hacker Style 2026 UI + Back Button Injector
+    const char* custom_css = "<meta name='viewport' content='width=device-width,initial-scale=1.0'>"
+                             "<style>"
+                             "body{background:#0a0a0a;color:#0f0;font-family:'Courier New',monospace;font-size:16px;}"
+                             "input[type='text'],input[type='password']{background:#111;color:#0f0;border:1px solid #0f0;padding:14px;width:100%;box-sizing:border-box;margin-bottom:15px;font-size:16px;}"
+                             "button,a{display:block;width:100%;background:#0f0;color:#000;border:none;padding:15px;cursor:pointer;font-weight:bold;margin-top:15px;text-align:center;text-decoration:none;font-size:18px;box-sizing:border-box;border-radius:2px;}"
+                             "button:hover,a:hover{background:#0a0;}"
+                             ".wrap{max-width:450px;width:90%;margin:20px auto;border:1px solid #0f0;padding:25px;box-shadow:0 0 15px #0f0;box-sizing:border-box;}"
+                             "h1{text-align:center;text-shadow:0 0 5px #0f0;margin-bottom:20px;font-size:24px;}"
+                             "div{color:#0f0;word-wrap:break-word;}"
+                             "td{padding:8px;}"
+                             "</style>"
+                             "<script>"
+                             "window.onload=function(){"
+                             "if(window.location.pathname!=='/'){var b=document.createElement('a');b.href='/';b.innerHTML='&laquo; BACK TO MENU';document.querySelector('.wrap').appendChild(b);}"
+                             "}"
+                             "</script>";
     wifiManager.setCustomHeadElement(custom_css);
 
     // * Reset settings - uncomment for testing
