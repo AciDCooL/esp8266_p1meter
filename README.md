@@ -10,7 +10,7 @@
 
 > "Stabilizing the grid, one telegram at a time." 🛠️💊
 
-This is a high-performance, ultra-stable P1 Meter firmware for the **Wemos D1 Mini / ESP8266**. Re-engineered in 2026 to fix legacy buffer overflows and memory fragmentation.
+This is a high-performance, ultra-stable P1 Meter firmware for the **Wemos D1 Mini / ESP8266**. Re-engineered in 2026 to fix legacy buffer overflows, memory fragmentation, and bring true "plug-and-play" Home Assistant integration.
 
 ---
 
@@ -19,32 +19,33 @@ This is a high-performance, ultra-stable P1 Meter firmware for the **Wemos D1 Mi
 We went through the code with a fine-toothed comb to ensure this thing runs for months without a stutter. 
 
 *   **⚡ 1s REAL-TIME UPDATES:** Polling interval reduced from 30s to 1s. Catch those power spikes as they happen.
-*   **🧠 HEAP PROTECTION:** Scrubbed all `String` objects from the transmission loop. No more memory "Swiss cheese" fragmentation.
-*   **🕵️ CHANGE DETECTION:** Only sends MQTT data if the value actually changes (with a 60s heartbeat). Saves your WiFi and your MQTT broker from unnecessary noise.
+*   **🧠 HEAP PROTECTION (Anti-Frag Engine):** Scrubbed all `String` and `std::vector` objects from the transmission loop. We parse the datagram entirely in-place. Zero allocations = zero memory "Swiss cheese" fragmentation = infinite uptime.
+*   **🏠 HOME ASSISTANT AUTO-DISCOVERY:** Enable it in the WebUI, and your meter instantly appears in Home Assistant with 24 fully configured sensors. No YAML required!
+    *   **Native Energy Dashboard:** Fully tagged with the correct `state_class` and `device_class` to work out-of-the-box with HA's built-in Energy tracking.
+    *   **LWT (Last Will & Testament):** Your meter now has a persistent status topic. If it loses power, Home Assistant immediately marks all 24 sensors as "Unavailable".
+    *   **Diagnostic Sensors:** Monitor the ESP's **WiFi RSSI (Signal Strength)** and **Local IP Address** straight from the Home Assistant device page.
+*   **🕵️ SMART CHANGE DETECTION:** Only sends MQTT data if the value actually changes (with a 20s heartbeat). Saves your WiFi and your MQTT broker from unnecessary noise.
 *   **🛡️ STACK SAFETY:** Moved large MQTT buffers to static memory. Say goodbye to Stack Overflows.
 *   **💾 CRASH REPORTING:** If it reboots, it tells you *why* over MQTT (`/last_reset`). Milestone tracking pinpointing exactly where it failed.
-*   **🧱 BUFFER HARDENING:** Fixed the infamous `telegram` array overflow that was wiping WiFi settings.
+*   **😎 HACKER WEB-UI:** The WiFi config portal has been upgraded with a lean, neon-green "terminal" aesthetic.
+*   **🧱 BUFFER & EEPROM HARDENING:** Fixed the infamous `telegram` array overflow that was wiping WiFi settings, and added a read-before-write check to massively extend EEPROM lifespan.
 
 ---
 
 ## 🧠 DEEP DIVE: ARCHITECTURAL IMPROVEMENTS
 
 ### 🛡️ THE "ANTI-FRAG" ENGINE (Heap Protection)
-The original code used `std::string` and `String` objects for every MQTT topic and payload. On an ESP8266, this is a death sentence. Every time you create a `String`, it allocates RAM. When you delete it, it leaves a "hole." Eventually, you have no big holes left (fragmentation), and the device crashes.
-**v1.2.0** uses `snprintf` and `ltoa` on fixed, pre-allocated char buffers. Zero allocations = zero fragmentation = infinite uptime. ♾️
+The original code used `std::string`, `String`, and vectors for parsing. On an ESP8266, this is a death sentence. Every time you create a `String`, it allocates RAM. 
+**v1.2.0** uses `snprintf`, direct `char*` pointer iteration, and fixed buffers. It reads the 13-month peak history directly out of the raw byte array without creating a single copy. 
 
 ### 📉 SMART CHANGE DETECTION (Efficiency)
 Modern P1 meters (DSMR 5.0) blast data every second. Sending 20+ MQTT messages every second is a massive waste of WiFi juice and CPU cycles. 
-**v1.2.0** caches the last value of every single sensor. It only hits the radio if the value moves or if the 60s "heartbeat" timer hits. Your Home Assistant gets instant updates on power spikes, but stays quiet when nothing is happening. 🤫
+**v1.2.0** caches the last value of every single sensor. It only hits the radio if the value moves or if the 20s "heartbeat" timer hits. Your Home Assistant gets instant updates on power spikes, but stays quiet when nothing is happening. 🤫
 
 ### 🧬 POST-MORTEM TELEMETRY (Crash Debugging)
 Ever wonder why your ESP just "stopped" responding? **v1.2.0** captures the `ResetReason` from the bootloader and the `Milestone` from RTC memory. 
 - **Milestones:** We track if it was `Booting`, `WiFi Connecting`, `Reading P1`, or `Sending MQTT` when it died. 
-- **MQTT Report:** On the next boot, it publishes the full autopsy report to `.../last_reset`. No serial cable needed to see why it crashed! 🕵️‍♂️
-
-### 🧱 STACK & BUFFER HARDENING
-The `telegram` buffer was too small (2048) and the code was writing two bytes past the end (`\n\0`). This "silent killer" would overwrite the WiFi configuration in RAM, causing a reboot and triggering the `DoubleResetDetector` to wipe your settings. 
-**v1.2.0** increased the buffer to 2050, added strict bounds checking, and moved the 1024-byte MQTT JSON buffer to **Static Memory** to keep the Stack lean and mean.
+- **MQTT Report:** On the next boot, it publishes the full autopsy report to `.../last_reset`.
 
 ---
 
@@ -58,15 +59,20 @@ The `telegram` buffer was too small (2048) and the code was writing two bytes pa
 
 ---
 
-## 📡 MQTT TOPICS
+## 📡 MQTT TOPICS & METRICS
 
-Your automations stay the same. We kept the legacy structure but made it faster.
+Your automations stay the same. We kept the legacy structure but made it faster and added missing 3-Phase metrics.
 
+**Core Topics:**
 | Topic | Description |
 | :--- | :--- |
 | `sensors/power/p1meter/actual_consumption` | Instant W usage |
+| `sensors/power/p1meter/l1_instant_power_usage` | **NEW:** L1, L2, L3 Usage (W) |
+| `sensors/power/p1meter/l1_instant_power_returndelivery` | **NEW:** L1, L2, L3 Return (W) |
 | `sensors/power/p1meter/last_reset` | **NEW:** Post-mortem crash report |
 | `hass/status` | Online/Offline status with Version ID |
+
+*(Note: Enabling Home Assistant Auto-Discovery does **not** change these topics. It just maps them for HA automatically).*
 
 ---
 
@@ -75,12 +81,12 @@ Your automations stay the same. We kept the legacy structure but made it faster.
 1. Open `esp8266_p1meter.ino` in VS Code + PlatformIO.
 2. Edit `settings.h` for your specific needs (though defaults are now ⚡ cracked).
 3. Flash that 💩.
-4. If it's your first time, connect to the `p1meter` AP and feed it your MQTT creds.
+4. If it's your first time, connect to the `p1meter` AP. You'll be greeted by the new Hacker UI. Feed it your MQTT creds and check the "Enable HA Auto-Discovery" box if you use Home Assistant.
 
 ---
 
 ### 📜 VERSION HISTORY
-- **v1.2.0** - 2026-03-20: Memory optimization, change detection, and 1s updates.
+- **v1.2.0** - 2026-03-20: HA Auto-Discovery, Hacker UI, 3-Phase Metrics, Zero-Allocation Anti-Frag Engine.
 - **v1.1.0** - Buffer overflow fixes, MQTT buffer increase, and Crash milestones.
 - **v1.0.0** - The OG release.
 

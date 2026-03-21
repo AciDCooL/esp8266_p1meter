@@ -48,6 +48,10 @@
 // * MQTT root topic
 #define MQTT_ROOT_TOPIC "sensors/power/p1meter"
 
+// * Home Assistant Auto Discovery
+#define HA_DISCOVERY_PREFIX "homeassistant"
+bool HA_AUTO_DISCOVERY = true; // Default to true
+
 // * MQTT Last reconnection counter
 long LAST_RECONNECT_ATTEMPT = 0;
 
@@ -76,6 +80,9 @@ long GAS_METER_M3;
 long L1_INSTANT_POWER_USAGE;
 long L2_INSTANT_POWER_USAGE;
 long L3_INSTANT_POWER_USAGE;
+long L1_INSTANT_POWER_RETURNDELIVERY;
+long L2_INSTANT_POWER_RETURNDELIVERY;
+long L3_INSTANT_POWER_RETURNDELIVERY;
 long L1_INSTANT_POWER_CURRENT;
 long L2_INSTANT_POWER_CURRENT;
 long L3_INSTANT_POWER_CURRENT;

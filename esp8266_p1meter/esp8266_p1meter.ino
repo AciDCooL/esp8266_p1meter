@@ -18,11 +18,7 @@
 #include <ArduinoOTA.h>
 #include <PubSubClient.h>
 #include <DoubleResetDetector.h>
-#include <string>
-#include <vector>
 #include <ArduinoJson.h>
-
-using namespace std;
 
 // * Include settings
 #include "settings.h"
@@ -40,7 +36,7 @@ WiFiClient espClient;
 PubSubClient mqtt_client(espClient);
 
 // * Reset and Milestone tracking
-String last_reset_info = "";
+char last_reset_info[128] = "";
 struct {
     uint32_t marker; // To verify RTC memory is valid
     uint32_t milestone;
@@ -108,27 +104,128 @@ void send_mqtt_message(const char *topic, JsonDocument& doc)
     doc.clear(); 
 }
 
+// **********************************
+// * Home Assistant Auto-Discovery  *
+// **********************************
+
+struct HASensor {
+    const char* id;
+    const char* name;
+    const char* unit;
+    const char* device_class;
+    const char* state_class;
+    const char* icon;
+};
+
+void publish_ha_discovery() {
+    if (!HA_AUTO_DISCOVERY) return;
+    
+    Serial.println(F("Publishing HA Auto-Discovery..."));
+
+    const HASensor sensors[] = {
+        {"consumption_low_tarif", "Consumption Low Tarif", "Wh", "energy", "total_increasing", ""},
+        {"consumption_high_tarif", "Consumption High Tarif", "Wh", "energy", "total_increasing", ""},
+        {"returndelivery_low_tarif", "Return Low Tarif", "Wh", "energy", "total_increasing", ""},
+        {"returndelivery_high_tarif", "Return High Tarif", "Wh", "energy", "total_increasing", ""},
+        {"actual_consumption", "Actual Consumption", "W", "power", "measurement", ""},
+        {"actual_returndelivery", "Actual Return", "W", "power", "measurement", ""},
+        {"l1_instant_power_usage", "L1 Power Usage", "W", "power", "measurement", ""},
+        {"l2_instant_power_usage", "L2 Power Usage", "W", "power", "measurement", ""},
+        {"l3_instant_power_usage", "L3 Power Usage", "W", "power", "measurement", ""},
+        {"l1_instant_power_returndelivery", "L1 Power Return", "W", "power", "measurement", ""},
+        {"l2_instant_power_returndelivery", "L2 Power Return", "W", "power", "measurement", ""},
+        {"l3_instant_power_returndelivery", "L3 Power Return", "W", "power", "measurement", ""},
+        {"l1_instant_power_current", "L1 Current", "A", "current", "measurement", ""},
+        {"l2_instant_power_current", "L2 Current", "A", "current", "measurement", ""},
+        {"l3_instant_power_current", "L3 Current", "A", "current", "measurement", ""},
+        {"l1_voltage", "L1 Voltage", "V", "voltage", "measurement", ""},
+        {"l2_voltage", "L2 Voltage", "V", "voltage", "measurement", ""},
+        {"l3_voltage", "L3 Voltage", "V", "voltage", "measurement", ""},
+        {"gas_meter_m3", "Gas Meter", "m³", "gas", "total_increasing", ""},
+        {"actual_average_15m_peak", "15m Average Peak", "W", "power", "measurement", ""},
+        {"thismonth_max_15m_peak", "This Month Max Peak", "W", "power", "measurement", ""},
+        {"last13months_average_15m_peak", "13 Months Avg Peak", "W", "power", "measurement", ""},
+        // Diagnostic sensors
+        {"wifi_rssi", "WiFi Signal", "dBm", "signal_strength", "measurement", "mdi:wifi"},
+        {"ip_address", "IP Address", "", "", "", "mdi:network"}
+    };
+
+    char topic[128];
+    char payload[600];
+    
+    char status_topic[128];
+    snprintf(status_topic, sizeof(status_topic), "%s/status", MQTT_ROOT_TOPIC);
+
+    for (const auto& sensor : sensors) {
+        snprintf(topic, sizeof(topic), "%s/sensor/p1meter_%s/config", HA_DISCOVERY_PREFIX, sensor.id);
+        
+        JsonDocument doc;
+        doc["name"] = sensor.name;
+        
+        char uid[64];
+        snprintf(uid, sizeof(uid), "p1meter_%s", sensor.id);
+        doc["unique_id"] = uid;
+        
+        char state_topic[128];
+        snprintf(state_topic, sizeof(state_topic), "%s/%s", MQTT_ROOT_TOPIC, sensor.id);
+        doc["state_topic"] = state_topic;
+        
+        // Availability linked to LWT
+        doc["availability_topic"] = status_topic;
+        doc["payload_available"] = "online";
+        doc["payload_not_available"] = "offline";
+        
+        if (strlen(sensor.unit) > 0) doc["unit_of_measurement"] = sensor.unit;
+        if (strlen(sensor.device_class) > 0) doc["device_class"] = sensor.device_class;
+        if (strlen(sensor.state_class) > 0) doc["state_class"] = sensor.state_class;
+        if (strlen(sensor.icon) > 0) doc["icon"] = sensor.icon;
+        
+        // If it's a diagnostic sensor, put it in the "diagnostic" category in HA
+        if (strcmp(sensor.id, "wifi_rssi") == 0 || strcmp(sensor.id, "ip_address") == 0) {
+            doc["entity_category"] = "diagnostic";
+        }
+        
+        JsonObject device = doc["device"].to<JsonObject>();
+        device["identifiers"][0] = "esp8266_p1meter";
+        device["name"] = "ESP8266 P1 Meter";
+        device["manufacturer"] = "Custom";
+        device["sw_version"] = VERSION;
+        
+        serializeJson(doc, payload, sizeof(payload));
+        mqtt_client.publish(topic, payload, true); // Retained message
+        
+        delay(10); // Small delay to prevent queue flooding
+    }
+    Serial.println(F("HA Auto-Discovery published."));
+}
+
 // * Reconnect to MQTT server and subscribe to in and out topics
 bool mqtt_reconnect()
 {
     Serial.println(F("Attempting MQTT connection..."));
+    
+    char status_topic[128];
+    snprintf(status_topic, sizeof(status_topic), "%s/status", MQTT_ROOT_TOPIC);
 
-    // * Attempt to connect
-    if (mqtt_client.connect(HOSTNAME, MQTT_USER, MQTT_PASS))
+    // * Attempt to connect with LWT (Last Will and Testament)
+    // If the ESP drops off the network, the broker will publish "offline" to the status topic
+    if (mqtt_client.connect(HOSTNAME, MQTT_USER, MQTT_PASS, status_topic, 1, true, "offline"))
     {
         Serial.println(F("MQTT connected!"));
 
-        // * Once connected, publish an announcement...
-        String message = String("p1 meter alive: ") + HOSTNAME + " (v" + VERSION + ")";
-        mqtt_client.publish("hass/status", message.c_str());
+        // * Once connected, publish online status
+        mqtt_client.publish(status_topic, "online", true);
 
         // Publish the last reset report for debugging
-        if (last_reset_info != "") {
-            String report = String("Version: ") + VERSION + " | " + last_reset_info;
-            String topic = String(MQTT_ROOT_TOPIC) + "/last_reset";
-            mqtt_client.publish(topic.c_str(), report.c_str(), true); // Retain this message
+        if (strlen(last_reset_info) > 0) {
+            char report[200];
+            snprintf(report, sizeof(report), "Version: %s | %s", VERSION, last_reset_info);
+            char topic[128];
+            snprintf(topic, sizeof(topic), "%s/last_reset", MQTT_ROOT_TOPIC);
+            mqtt_client.publish(topic, report, true); // Retain this message
         }
 
+        publish_ha_discovery();
         Serial.printf("MQTT root topic: %s\n", MQTT_ROOT_TOPIC);
         return true;
     }
@@ -144,14 +241,15 @@ bool mqtt_reconnect()
 long LAST_CON_LOW = -1, LAST_CON_HIGH = -1, LAST_RET_LOW = -1, LAST_RET_HIGH = -1;
 long LAST_ACT_CON = -1, LAST_ACT_RET = -1, LAST_GAS = -1;
 long LAST_L1_P = -1, LAST_L2_P = -1, LAST_L3_P = -1, LAST_L1_C = -1, LAST_L2_C = -1, LAST_L3_C = -1, LAST_L1_V = -1, LAST_L2_V = -1, LAST_L3_V = -1;
+long LAST_L1_R = -1, LAST_L2_R = -1, LAST_L3_R = -1;
 long LAST_TARIF = -1, LAST_S_OUT = -1, LAST_L_OUT = -1, LAST_S_DROP = -1, LAST_S_PEAK = -1;
 long LAST_AVG_15M = -1, LAST_MAX_15M = -1, LAST_AVG_13MO = -1;
 unsigned long LAST_HEARTBEAT = 0;
 
 void send_metric(const char* name, long metric, long& last_value)
 {
-    // Heartbeat: Send every 60s even if no change, OR if value changed
-    if (metric != last_value || (millis() - LAST_HEARTBEAT > 60000)) {
+    // Heartbeat: Send every 20s even if no change, OR if value changed
+    if (metric != last_value || (millis() - LAST_HEARTBEAT > 20000)) {
         char topic[128];
         char payload[16];
         
@@ -179,6 +277,9 @@ void send_data_to_broker()
     send_metric("l1_instant_power_usage", L1_INSTANT_POWER_USAGE, LAST_L1_P);
     send_metric("l2_instant_power_usage", L2_INSTANT_POWER_USAGE, LAST_L2_P);
     send_metric("l3_instant_power_usage", L3_INSTANT_POWER_USAGE, LAST_L3_P);
+    send_metric("l1_instant_power_returndelivery", L1_INSTANT_POWER_RETURNDELIVERY, LAST_L1_R);
+    send_metric("l2_instant_power_returndelivery", L2_INSTANT_POWER_RETURNDELIVERY, LAST_L2_R);
+    send_metric("l3_instant_power_returndelivery", L3_INSTANT_POWER_RETURNDELIVERY, LAST_L3_R);
     send_metric("l1_instant_power_current", L1_INSTANT_POWER_CURRENT, LAST_L1_C);
     send_metric("l2_instant_power_current", L2_INSTANT_POWER_CURRENT, LAST_L2_C);
     send_metric("l3_instant_power_current", L3_INSTANT_POWER_CURRENT, LAST_L3_C);
@@ -198,7 +299,18 @@ void send_data_to_broker()
     send_metric("thismonth_max_15m_peak", mMax15mPeakThisMonth, LAST_MAX_15M);
     send_metric("last13months_average_15m_peak", mAverage15mPeakLast13months, LAST_AVG_13MO);
 
-    if (millis() - LAST_HEARTBEAT > 60000) {
+    if (millis() - LAST_HEARTBEAT > 20000) {
+        // Send Diagnostic Data
+        char topic[128];
+        char payload[32];
+        
+        snprintf(topic, sizeof(topic), "%s/wifi_rssi", MQTT_ROOT_TOPIC);
+        ltoa(WiFi.RSSI(), payload, 10);
+        mqtt_client.publish(topic, payload, false);
+
+        snprintf(topic, sizeof(topic), "%s/ip_address", MQTT_ROOT_TOPIC);
+        mqtt_client.publish(topic, WiFi.localIP().toString().c_str(), false);
+
         LAST_HEARTBEAT = millis();
     }
     
@@ -287,27 +399,6 @@ long getValue(const char *buffer, int maxlen, char startchar, char endchar) // s
         }
     }
     return 0;
-}
-
-// returns an array of values '(02.314)'
-vector<string> parseStringIntoVectorArray(const char *input)
-{
-    string s(input);
-
-    vector<string> result;
-    size_t start = s.find("(");
-    while (start != string::npos)
-    {
-        size_t end = s.find(")", start + 1);
-        if (end == string::npos)
-        {
-            break;
-        }
-        // result.push_back(s.substr(start + 1, end - start - 1));
-        result.push_back(s.substr(start, end - start + 1)); // keep the emphases in the result. (12)
-        start = s.find("(", end + 1);
-    }
-    return result;
 }
 
 bool decode_telegram(int len)
@@ -414,8 +505,6 @@ bool decode_telegram(int len)
         ACTUAL_RETURNDELIVERY = getValue(telegram, len, '(', '*');
     }
 
-    // undocumented --> remove
-    /*
     // 1-0:21.7.0(00.378*kW)
     // 1-0:21.7.0 = Instantaan vermogen Elektriciteit levering L1
     if (strncmp(telegram, "1-0:21.7.0", strlen("1-0:21.7.0")) == 0)
@@ -436,7 +525,27 @@ bool decode_telegram(int len)
     {
         L3_INSTANT_POWER_USAGE = getValue(telegram, len, '(', '*');
     }
-*/
+
+    // 1-0:22.7.0(00.378*kW)
+    // 1-0:22.7.0 = Instantaan vermogen Elektriciteit teruglevering L1
+    if (strncmp(telegram, "1-0:22.7.0", strlen("1-0:22.7.0")) == 0)
+    {
+        L1_INSTANT_POWER_RETURNDELIVERY = getValue(telegram, len, '(', '*');
+    }
+
+    // 1-0:42.7.0(00.378*kW)
+    // 1-0:42.7.0 = Instantaan vermogen Elektriciteit teruglevering L2
+    if (strncmp(telegram, "1-0:42.7.0", strlen("1-0:42.7.0")) == 0)
+    {
+        L2_INSTANT_POWER_RETURNDELIVERY = getValue(telegram, len, '(', '*');
+    }
+
+    // 1-0:62.7.0(00.378*kW)
+    // 1-0:62.7.0 = Instantaan vermogen Elektriciteit teruglevering L3
+    if (strncmp(telegram, "1-0:62.7.0", strlen("1-0:62.7.0")) == 0)
+    {
+        L3_INSTANT_POWER_RETURNDELIVERY = getValue(telegram, len, '(', '*');
+    }
     // 1-0:31.7.0(002*A)
     // 1-0:31.7.0 = Instantant stroom Elektriciteit L1
     if (strncmp(telegram, "1-0:31.7.0", strlen("1-0:31.7.0")) == 0)
@@ -532,41 +641,49 @@ bool decode_telegram(int len)
     if (strncmp(telegram, "0-0:98.1.0", strlen("0-0:98.1.0")) == 0)
     {
         Last13MonthsPeaks_json.clear(); // Ensure document is empty before populating
-        vector<string> output = parseStringIntoVectorArray(telegram); // parse telegram into array of strings based on the parentheses '(' ')'
 
-        if (output.size() > 0)
+        char* ptr = strchr(telegram, '(');
+        if (ptr)
         {
-            unsigned long count = stol(output[0].substr(1, output[0].size() - 2));
-            mAverage15mPeakLast13months = count;
-            vector<long> valuesArray;
-
-            // create JsonObject from values telegram
+            unsigned long count = strtol(ptr + 1, NULL, 10);
+            
             Last13MonthsPeaks_json["count"] = count;
             Last13MonthsPeaks_json["unit"] = "W";
             JsonArray peakvalues = Last13MonthsPeaks_json["values"].to<JsonArray>();
 
-            for (unsigned int i = 3; i < output.size(); i += 3)
-            {
-                if (i + 2 < output.size())
-                {
-                    long val = getValue(output[i + 2].c_str(), output[i + 2].size(), '(', '*');
-                    valuesArray.push_back(val);
-                    peakvalues.add(val);
-                }
+            // Skip the next two blocks, e.g., (1-0:1.6.0)(1-0:1.6.0)
+            for (int i = 0; i < 2 && ptr; i++) {
+                ptr = strchr(ptr + 1, '(');
             }
 
-            //calculate average peak value.
-            if (valuesArray.size() > 0)
-            {
-                long sum = 0;
-                for (unsigned int i = 0; i < valuesArray.size(); i++)
-                    sum += valuesArray[i];
-                long average = sum / valuesArray.size();
+            long sum = 0;
+            int valid_values = 0;
 
-                if (count == valuesArray.size())
-                    mAverage15mPeakLast13months = average;
-                else
-                    mAverage15mPeakLast13months = -1; // detect error value over MQTT.
+            // Now read groups of 3 blocks: (timestamp1)(timestamp2)(value*kW)
+            while (ptr) {
+                ptr = strchr(ptr + 1, '('); // block 1 (timestamp1)
+                if (!ptr) break;
+                ptr = strchr(ptr + 1, '('); // block 2 (timestamp2)
+                if (!ptr) break;
+                ptr = strchr(ptr + 1, '('); // block 3 (value*kW)
+                if (!ptr) break;
+
+                // ptr points to '('. The value is between '(' and '*'
+                float val_kW = atof(ptr + 1);
+                long val_W = (long)(val_kW * 1000.0);
+                
+                peakvalues.add(val_W);
+                sum += val_W;
+                valid_values++;
+                
+                // Advance ptr to the end of this block ')'
+                ptr = strchr(ptr, ')');
+            }
+
+            if (valid_values > 0 && count == (unsigned long)valid_values) {
+                mAverage15mPeakLast13months = sum / valid_values;
+            } else {
+                mAverage15mPeakLast13months = -1; // detect error value over MQTT.
             }
         }
     }
@@ -625,30 +742,28 @@ void processLine(int len)
 // * EEPROM helpers                 *
 // **********************************
 
-String read_eeprom(int offset, int len)
+void read_eeprom(int offset, int len, char* buffer)
 {
     Serial.print(F("read_eeprom()"));
 
-    String res = "";
     for (int i = 0; i < len; ++i)
     {
-        res += char(EEPROM.read(i + offset));
+        buffer[i] = char(EEPROM.read(i + offset));
     }
-    return res;
+    buffer[len] = '\0'; // Null-terminate the string
 }
 
-void write_eeprom(int offset, int len, String value)
+void write_eeprom(int offset, int len, const char* value)
 {
     Serial.println(F("write_eeprom()"));
+    size_t val_len = strlen(value);
+    
     for (int i = 0; i < len; ++i)
     {
-        if ((unsigned)i < value.length())
+        char charToWrite = ((unsigned)i < val_len) ? value[i] : 0;
+        if (EEPROM.read(i + offset) != charToWrite)
         {
-            EEPROM.write(i + offset, value[i]);
-        }
-        else
-        {
-            EEPROM.write(i + offset, 0);
+            EEPROM.write(i + offset, charToWrite);
         }
     }
 }
@@ -762,7 +877,7 @@ void setup()
 
     // Capture the reset reason and milestone
     ESP.rtcUserMemoryRead(RTC_BASE_ADDR, (uint32_t*)&rtc_data, sizeof(rtc_data));
-    String milestone_name = "Unknown";
+    const char* milestone_name = "Unknown";
     if (rtc_data.marker == RTC_MARKER) {
         switch(rtc_data.milestone) {
             case 1: milestone_name = "Booting"; break;
@@ -773,7 +888,7 @@ void setup()
         }
     }
     
-    last_reset_info = String("Reason: ") + ESP.getResetReason() + " | Info: " + ESP.getResetInfo() + " | Milestone: " + milestone_name;
+    snprintf(last_reset_info, sizeof(last_reset_info), "Reason: %s | Info: %s | Milestone: %s", ESP.getResetReason().c_str(), ESP.getResetInfo().c_str(), milestone_name);
     Serial.println(last_reset_info);
 
     // Reset milestone for the current session
@@ -808,14 +923,18 @@ void setup()
     ticker.attach(0.6, tick);
 
     // * Get MQTT Server settings
-    String settings_available = read_eeprom(134, 1);
+    char settings_available[2] = "";
+    read_eeprom(134, 1, settings_available);
+    char ha_val_str[2] = "1";
 
-    if (settings_available == "1")
+    if (settings_available[0] == '1')
     {
-        read_eeprom(0, 64).toCharArray(MQTT_HOST, 64);   // * 0-63
-        read_eeprom(64, 6).toCharArray(MQTT_PORT, 6);    // * 64-69
-        read_eeprom(70, 32).toCharArray(MQTT_USER, 32);  // * 70-101
-        read_eeprom(102, 32).toCharArray(MQTT_PASS, 32); // * 102-133
+        read_eeprom(0, 64, MQTT_HOST);   // * 0-63
+        read_eeprom(64, 6, MQTT_PORT);    // * 64-69
+        read_eeprom(70, 32, MQTT_USER);  // * 70-101
+        read_eeprom(102, 32, MQTT_PASS); // * 102-133
+        read_eeprom(135, 1, ha_val_str);  // * 135
+        HA_AUTO_DISCOVERY = (ha_val_str[0] == '1');
     }
 
     WiFiManagerParameter CUSTOM_MQTT_HOST("host", "MQTT hostname", MQTT_HOST, 64);
@@ -823,8 +942,16 @@ void setup()
     WiFiManagerParameter CUSTOM_MQTT_USER("user", "MQTT user", MQTT_USER, 32);
     WiFiManagerParameter CUSTOM_MQTT_PASS("pass", "MQTT pass", MQTT_PASS, 32);
 
+    char customhtml[200];
+    snprintf(customhtml, sizeof(customhtml), "type=\"hidden\" id=\"ha_val\"><label style=\"color:#0f0;cursor:pointer;\"><input type=\"checkbox\" %s onchange=\"document.getElementById('ha_val').value=this.checked?'1':'0';\"> Enable HA Auto-Discovery</label><br", HA_AUTO_DISCOVERY ? "checked" : "");
+    WiFiManagerParameter CUSTOM_HA_DISCOVERY("ha_val", "", ha_val_str, 2, customhtml);
+
     // * WiFiManager local initialization. Once its business is done, there is no need to keep it around
     WiFiManager wifiManager;
+
+    // Hacker Style 2026 UI
+    const char* custom_css = "<style>body{background:#0a0a0a;color:#0f0;font-family:'Courier New',Courier,monospace;}input{background:#111;color:#0f0;border:1px solid #0f0;padding:8px;}button{background:#0f0;color:#000;border:none;padding:10px 20px;cursor:pointer;font-weight:bold;margin-top:10px;}button:hover{background:#0a0;}.wrap{max-width:400px;margin:20px auto;border:1px solid #0f0;padding:20px;box-shadow:0 0 10px #0f0;}h1{text-align:center;text-shadow:0 0 5px #0f0;}div,a{color:#0f0;}</style>";
+    wifiManager.setCustomHeadElement(custom_css);
 
     // * Reset settings - uncomment for testing
     // wifiManager.resetSettings();
@@ -843,6 +970,7 @@ void setup()
     wifiManager.addParameter(&CUSTOM_MQTT_PORT);
     wifiManager.addParameter(&CUSTOM_MQTT_USER);
     wifiManager.addParameter(&CUSTOM_MQTT_PASS);
+    wifiManager.addParameter(&CUSTOM_HA_DISCOVERY);
 
     // * Fetches SSID and pass and tries to connect
     // * Reset when no connection after 10 seconds
@@ -861,6 +989,11 @@ void setup()
     strcpy(MQTT_PORT, CUSTOM_MQTT_PORT.getValue());
     strcpy(MQTT_USER, CUSTOM_MQTT_USER.getValue());
     strcpy(MQTT_PASS, CUSTOM_MQTT_PASS.getValue());
+    
+    // Process HA Auto-Discovery parameter safely
+    if (CUSTOM_HA_DISCOVERY.getValue()[0] == '1' || CUSTOM_HA_DISCOVERY.getValue()[0] == '0') {
+        HA_AUTO_DISCOVERY = (CUSTOM_HA_DISCOVERY.getValue()[0] == '1');
+    }
 
     // * Save the custom parameters to EEPROM
     if (shouldSaveConfig)
@@ -872,6 +1005,7 @@ void setup()
         write_eeprom(70, 32, MQTT_USER);  // * 70-101
         write_eeprom(102, 32, MQTT_PASS); // * 102-133
         write_eeprom(134, 1, "1");        // * 134 --> always "1"
+        write_eeprom(135, 1, HA_AUTO_DISCOVERY ? "1" : "0"); // * 135
         EEPROM.commit();
     }
 
