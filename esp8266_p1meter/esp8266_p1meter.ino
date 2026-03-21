@@ -145,11 +145,11 @@ void publish_ha_discovery() {
         {"l1_voltage", "L1 Voltage", "V", "voltage", "measurement", ""},
         {"l2_voltage", "L2 Voltage", "V", "voltage", "measurement", ""},
         {"l3_voltage", "L3 Voltage", "V", "voltage", "measurement", ""},
-        {"frequency", "Frequency", "Hz", "frequency", "measurement", ""},
+        {"frequency", "Line Frequency", "Hz", "frequency", "measurement", ""},
         {"gas_meter_m3", "Gas Meter", "m³", "gas", "total_increasing", ""},
-        {"actual_average_15m_peak", "15m Average Peak", "W", "power", "measurement", ""},
-        {"thismonth_max_15m_peak", "This Month Max Peak", "W", "power", "measurement", ""},
-        {"last13months_average_15m_peak", "13 Months Avg Peak", "W", "power", "measurement", ""},
+        {"actual_average_15m_peak", "Peak 15m Average", "W", "power", "measurement", ""},
+        {"thismonth_max_15m_peak", "Peak Max This Month", "W", "power", "measurement", ""},
+        {"last13months_average_15m_peak", "Peak 13 Months Avg", "W", "power", "measurement", ""},
         // Diagnostic sensors
         {"wifi_rssi", "WiFi Signal", "dBm", "signal_strength", "measurement", "mdi:wifi"},
         {"ip_address", "IP Address", "", "", "", "mdi:network"}
