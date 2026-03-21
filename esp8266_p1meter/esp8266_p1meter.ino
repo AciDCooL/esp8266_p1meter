@@ -7,7 +7,6 @@
  */
 #define VERSION "1.2.0"
 
-#include <FS.h>
 #include <EEPROM.h>
 #include <DNSServer.h>
 #include <ESP8266WiFi.h>
