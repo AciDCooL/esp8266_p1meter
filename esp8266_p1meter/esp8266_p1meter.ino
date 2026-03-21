@@ -9,8 +9,9 @@
  * 1.2.3 - Hotfix for WebUI Save button visibility and dynamic EEPROM defaults.
  * 1.2.4 - Hotfix for memory corruption in read_eeprom and checkbox ID mismatch.
  * 1.2.5 - Fix for Gas parsing, robust getValue extraction, and proper scaling for float metrics (Voltage, Current, Frequency).
+ * 1.2.6 - Implement Dynamic HA Discovery (only register sensors found in datagram) and fixed Current precision bugs.
  */
-#define VERSION "1.2.5"
+#define VERSION "1.2.6"
 
 #include <EEPROM.h>
 #include <DNSServer.h>

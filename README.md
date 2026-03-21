@@ -5,7 +5,7 @@
  | |____ ____) | |       / /|_| (_) |  | |  / /_ | | (_) / /_ / /  / /_|_| 
  |______|_____/|_|      /_/(_) \___/   |_| |____||_|\___/____/_/  |____(_)
                                                                            
-# ⚡ ESP8266 P1-METER ⚡ [v1.2.5 - 2026 EDITION]
+# ⚡ ESP8266 P1-METER ⚡ [v1.2.6 - 2026 EDITION]
 
 > "Stabilizing the grid, one telegram at a time." 🛠️💊
 
@@ -13,7 +13,7 @@ This is a high-performance, ultra-stable P1 Meter firmware for the **Wemos D1 Mi
 
 ---
 
-## 🚀 WHAT'S NEW IN v1.2.5 (THE "NO-CRASH" PATCH)
+## 🚀 WHAT'S NEW IN v1.2.6 (THE "NO-CRASH" PATCH)
 
 We went through the code with a fine-toothed comb to ensure this thing runs for months without a stutter. 
 
@@ -111,6 +111,7 @@ For security and performance, the WebUI **shuts down** once the meter connects t
 ---
 
 ### 📜 VERSION HISTORY
+- **v1.2.6** - 2026-03-20: Implemented Dynamic HA Discovery (ESP now "listens" for 30s to see which sensors your meter actually provides before registering them in HA). Fixed precision bug for Current sensors (was locked at 1.00A).
 - **v1.2.5** - 2026-03-20: Refactored P1 parsing for Gas (supports standard and Fluvius codes). Fixed robust getValue extraction (missing characters fix). Added proper float scaling for Voltage, Current, and Frequency topics.
 - **v1.2.4** - 2026-03-20: Hotfix - Memory corruption fix in EEPROM read and checkbox ID mismatch.
 - **v1.2.3** - 2026-03-20: Hotfix - Fixed WebUI 'Save' button visibility and added dynamic EEPROM state-awareness.
