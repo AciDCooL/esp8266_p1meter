@@ -155,10 +155,14 @@ void publish_ha_discovery() {
     char status_topic[128];
     snprintf(status_topic, sizeof(status_topic), "%s/status", MQTT_ROOT_TOPIC);
 
+    // Declare the document once to reuse the same memory block for all 24 sensors
+    JsonDocument doc;
+
     for (const auto& sensor : sensors) {
+        doc.clear();
+        
         snprintf(topic, sizeof(topic), "%s/sensor/p1meter_%s/config", HA_DISCOVERY_PREFIX, sensor.id);
         
-        JsonDocument doc;
         doc["name"] = sensor.name;
         
         char uid[64];
@@ -193,7 +197,10 @@ void publish_ha_discovery() {
         serializeJson(doc, payload, sizeof(payload));
         mqtt_client.publish(topic, payload, true); // Retained message
         
-        delay(10); // Small delay to prevent queue flooding
+        // Process background tasks and MQTT ACKs to prevent TCP buffer overflow
+        mqtt_client.loop();
+        yield();
+        delay(30); 
     }
     Serial.println(F("HA Auto-Discovery published."));
 }
@@ -206,9 +213,12 @@ bool mqtt_reconnect()
     char status_topic[128];
     snprintf(status_topic, sizeof(status_topic), "%s/status", MQTT_ROOT_TOPIC);
 
+    char client_id[64];
+    snprintf(client_id, sizeof(client_id), "%s-%06X", HOSTNAME, ESP.getChipId());
+
     // * Attempt to connect with LWT (Last Will and Testament)
     // If the ESP drops off the network, the broker will publish "offline" to the status topic
-    if (mqtt_client.connect(HOSTNAME, MQTT_USER, MQTT_PASS, status_topic, 1, true, "offline"))
+    if (mqtt_client.connect(client_id, MQTT_USER, MQTT_PASS, status_topic, 1, true, "offline"))
     {
         Serial.println(F("MQTT connected!"));
 
