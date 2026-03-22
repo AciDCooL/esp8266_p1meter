@@ -1,9 +1,9 @@
 /* 
- * ESP8266 P1 Meter - v1.2.8
+ * ESP8266 P1 Meter - v1.2.9
  * Re-engineered for maximum stability, zero heap fragmentation, 
  * and native Home Assistant Auto-Discovery.
  */
-#define VERSION "1.2.8"
+#define VERSION "1.2.9"
 
 #include <EEPROM.h>
 #include <DNSServer.h>
@@ -128,17 +128,29 @@ void publish_ha_discovery() {
     char topic[128], payload[600], status_topic[128];
     snprintf(status_topic, sizeof(status_topic), "%s/status", MQTT_ROOT_TOPIC);
 
+    // Prepare unique strings for the device based on ChipID
+    char dev_name[64];
+    snprintf(dev_name, sizeof(dev_name), "%s-%06X", HA_DEVICE_NAME, ESP.getChipId());
+    
+    char dev_id[32];
+    snprintf(dev_id, sizeof(dev_id), "p1meter_%06X", ESP.getChipId());
+
     JsonDocument doc;
     for (size_t i = 0; i < SENSOR_COUNT; i++) {
         if (!seen_metrics[i] && strcmp(sensors[i].id, "wifi_rssi") != 0 && strcmp(sensors[i].id, "ip_address") != 0) continue;
 
         doc.clear();
         const HASensor& s = sensors[i];
-        snprintf(topic, sizeof(topic), "%s/sensor/p1meter/%s/config", HA_DISCOVERY_PREFIX, s.id);
+        
+        // Discovery topic: homeassistant/sensor/p1meter_ID/sensor_id/config
+        snprintf(topic, sizeof(topic), "%s/sensor/%s/%s/config", HA_DISCOVERY_PREFIX, dev_id, s.id);
         
         doc["name"] = s.name;
-        char uid[64]; snprintf(uid, sizeof(uid), "p1meter_%s", s.id);
+        
+        char uid[64]; 
+        snprintf(uid, sizeof(uid), "%s_%s", dev_id, s.id);
         doc["unique_id"] = uid;
+        
         char st_topic[128]; snprintf(st_topic, sizeof(st_topic), "%s/%s", MQTT_ROOT_TOPIC, s.id);
         doc["state_topic"] = st_topic;
         doc["availability_topic"] = status_topic;
@@ -152,8 +164,8 @@ void publish_ha_discovery() {
         if (strcmp(s.id, "wifi_rssi") == 0 || strcmp(s.id, "ip_address") == 0) doc["entity_category"] = "diagnostic";
         
         JsonObject dev = doc["device"].to<JsonObject>();
-        dev["identifiers"][0] = "esp8266_p1meter";
-        dev["name"] = HA_DEVICE_NAME;
+        dev["identifiers"][0] = dev_id;
+        dev["name"] = dev_name;
         dev["manufacturer"] = HA_MANUFACTURER;
         dev["model"] = HA_MODEL;
         dev["sw_version"] = VERSION;
