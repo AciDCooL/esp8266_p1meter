@@ -63,9 +63,9 @@ Ever wonder why your ESP just "stopped" responding? **v1.2.0** captures the `Res
 
 ## 🔌 CONNECTING TO THE P1 METER
 
-Connect the ESP8266 to an RJ11 cable/connector following the diagram below.
+Connect the esp8266 to an RJ11 cable/connector following the diagram.
 
-**Note:** When using a 4-pin RJ11 connector (instead of a 6-pin connector), pin 1 and 6 are the pins that are not present, so the first pin is pin 2 and the last pin is pin 5.
+**Note:** when using a 4-pin RJ11 connector (instead of a 6-pin connector), pin 1 and 6 are the pins that are not present, so the first pin is pin 2 and the last pin is pin 5
 
 | P1 pin | ESP8266 Pin |
 | :--- | :--- |
@@ -74,14 +74,26 @@ Connect the ESP8266 to an RJ11 cable/connector following the diagram below.
 | 4 - | |
 | 5 - RXD (data) | RX (gpio3) |
 
-On most Landis + Gyr models, a **10K resistor** should be used between the ESP's 3.3v and the P1's DATA (RXD) pin. While some guides mention RTS requires 5V (VIN) to activate the P1 port, 3.3V is typically sufficient for most modern meters.
+On most Landys and Gyr models a 10K resistor should be used between the ESP's 3.3v and the p1's DATA (RXD) pin. Many howto's mention RTS requires 5V (VIN) to activate the P1 port, but for me 3V3 suffices.
 
-### Wiring Diagrams:
+### Standard Wiring:
 ![Standard Wiring](assets/esp8266_p1meter_bb.png)
-*Standard wiring diagram with external power.*
 
+#### Optional: Powering the esp8266 using your DSMR5+ meter
+
+When using a 6 pin cable you can use the power source provided by the meter.
+
+| P1 pin | ESP8266 Pin |
+| :--- | :--- |
+| 1 - 5v out | 5v or Vin |
+| 2 - RTS | 3.3v |
+| 3 - GND | GND |
+| 4 - | |
+| 5 - RXD (data) | RX (gpio3) |
+| 6 - GND | GND |
+
+### Powered by Meter Wiring:
 ![Powered by Meter](assets/esp8266_p1meter_bb_PoweredByMeter.png)
-*Alternative wiring: Powered directly by the P1 meter (if supported by your meter model).*
 
 ---
 
