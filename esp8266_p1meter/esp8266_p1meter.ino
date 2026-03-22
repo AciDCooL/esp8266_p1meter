@@ -1,9 +1,9 @@
 /* 
- * ESP8266 P1 Meter - v1.2.7
+ * ESP8266 P1 Meter - v1.2.8
  * Re-engineered for maximum stability, zero heap fragmentation, 
  * and native Home Assistant Auto-Discovery.
  */
-#define VERSION "1.2.7"
+#define VERSION "1.2.8"
 
 #include <EEPROM.h>
 #include <DNSServer.h>
@@ -157,10 +157,6 @@ void publish_ha_discovery() {
         dev["manufacturer"] = HA_MANUFACTURER;
         dev["model"] = HA_MODEL;
         dev["sw_version"] = VERSION;
-        
-        char config_url[64];
-        snprintf(config_url, sizeof(config_url), "http://%s", WiFi.localIP().toString().c_str());
-        dev["configuration_url"] = config_url;
         
         serializeJson(doc, payload, sizeof(payload));
         mqtt_client.publish(topic, payload, true);

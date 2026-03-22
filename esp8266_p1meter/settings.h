@@ -1,7 +1,11 @@
 // **********************************
 // * Settings                       *
-// * Settings                       *
 // **********************************
+
+// * Home Assistant Branding (Hardcoded - No UI option)
+#define HA_DEVICE_NAME "P1 Meter"
+#define HA_MANUFACTURER "AciDCooL Labs"
+#define HA_MODEL "ESP8266-P1"
 
 //Reset wifi settings:
 // *Number of seconds after reset during which a

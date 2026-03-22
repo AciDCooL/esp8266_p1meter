@@ -5,7 +5,7 @@
  | |____ ____) | |       / /|_| (_) |  | |  / /_ | | (_) / /_ / /  / /_|_| 
  |______|_____/|_|      /_/(_) \___/   |_| |____||_|\___/____/_/  |____(_)
                                                                            
-# ⚡ ESP8266 P1-METER ⚡ [v1.2.7 - 2026 EDITION]
+# ⚡ ESP8266 P1-METER ⚡ [v1.2.8 - 2026 EDITION]
 
 > "Stabilizing the grid, one telegram at a time." 🛠️💊
 
@@ -13,16 +13,15 @@ This is a high-performance, ultra-stable P1 Meter firmware for the **Wemos D1 Mi
 
 ---
 
-## 🚀 WHAT'S NEW IN v1.2.7 (THE "PRO" PATCH)
+## 🚀 WHAT'S NEW IN v1.2.8 (THE "NO-CRASH" PATCH)
 
 We went through the code with a fine-toothed comb to ensure this thing runs for months without a stutter. 
 
 *   **⚡ 1s REAL-TIME UPDATES:** Polling interval reduced from 30s to 1s. Catch those power spikes as they happen.
 *   **🧠 HEAP PROTECTION (Anti-Frag Engine):** Scrubbed all `String` and `std::vector` objects from the transmission loop. We parse the datagram entirely in-place. Zero allocations = zero memory "Swiss cheese" fragmentation = infinite uptime.
 *   **🏠 PRO HOME ASSISTANT INTEGRATION:** 
-    *   **Dynamic Discovery:** (v1.2.6) ESP now "listens" for 30s to see which sensors your meter actually provides before registering them in HA.
-    *   **Branding:** (v1.2.7) Customizable Manufacturer, Model, and Friendly Name in `settings.h`.
-    *   **Visit Device Button:** (v1.2.7) Direct link to the ESP's WebUI from the Home Assistant Device page.
+    *   **Dynamic Discovery:** ESP now "listens" for 30s to see which sensors your meter actually provides before registering them in HA.
+    *   **Branding:** Customizable Manufacturer, Model, and Friendly Name hardcoded in `settings.h`.
     *   **Native Energy Dashboard:** Fully tagged with the correct `state_class` and `device_class` to work out-of-the-box with HA's built-in Energy tracking.
     *   **LWT (Last Will & Testament):** If it loses power, Home Assistant immediately marks all sensors as "Unavailable".
 *   **🕵️ SMART CHANGE DETECTION:** Only sends MQTT data if the value actually changes (with a 20s heartbeat). Saves your WiFi and your MQTT broker from unnecessary noise.
@@ -69,8 +68,8 @@ Your automations stay the same. We kept the legacy structure but made it faster 
 | :--- | :--- |
 | `sensors/power/p1meter/actual_consumption` | Instant W usage |
 | `sensors/power/p1meter/l1_instant_power_usage` | L1, L2, L3 Usage (W) |
-| `sensors/power/p1meter/l1_voltage` | **NEW:** L1, L2, L3 Voltage (V) |
-| `sensors/power/p1meter/frequency` | **NEW:** Line Frequency (Hz) |
+| `sensors/power/p1meter/l1_voltage` | L1, L2, L3 Voltage (V) |
+| `sensors/power/p1meter/frequency` | Line Frequency (Hz) |
 | `sensors/power/p1meter/gas_meter_m3` | Gas Meter (m³) |
 | `sensors/power/p1meter/last_reset` | Post-mortem crash report |
 | `hass/status` | Online/Offline status with Version ID |
@@ -112,6 +111,7 @@ For security and performance, the WebUI **shuts down** once the meter connects t
 ---
 
 ### 📜 VERSION HISTORY
+- **v1.2.8** - 2026-03-20: Removed redundant configuration_url. Hardcoded HA Branding options in settings.h.
 - **v1.2.7** - 2026-03-20: Added Pro-Branding (Manufacturer, Model) and Configuration URL support for Home Assistant.
 - **v1.2.6** - 2026-03-20: Implemented Dynamic HA Discovery (ESP now "listens" for 30s to see which sensors your meter actually provides before registering them in HA). Fixed precision bug for Current sensors (was locked at 1.00A).
 - **v1.2.5** - 2026-03-20: Refactored P1 parsing for Gas (supports standard and Fluvius codes). Fixed robust getValue extraction (missing characters fix). Added proper float scaling for Voltage, Current, and Frequency topics.
