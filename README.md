@@ -5,7 +5,7 @@
  | |____ ____) | |       / /|_| (_) |  | |  / /_ | | (_) / /_ / /  / /_|_| 
  |______|_____/|_|      /_/(_) \___/   |_| |____||_|\___/____/_/  |____(_)
                                                                            
-# ⚡ ESP8266 P1-METER ⚡ [v1.2.6 - 2026 EDITION]
+# ⚡ ESP8266 P1-METER ⚡ [v1.2.7 - 2026 EDITION]
 
 > "Stabilizing the grid, one telegram at a time." 🛠️💊
 
@@ -13,17 +13,18 @@ This is a high-performance, ultra-stable P1 Meter firmware for the **Wemos D1 Mi
 
 ---
 
-## 🚀 WHAT'S NEW IN v1.2.6 (THE "NO-CRASH" PATCH)
+## 🚀 WHAT'S NEW IN v1.2.7 (THE "PRO" PATCH)
 
 We went through the code with a fine-toothed comb to ensure this thing runs for months without a stutter. 
 
 *   **⚡ 1s REAL-TIME UPDATES:** Polling interval reduced from 30s to 1s. Catch those power spikes as they happen.
 *   **🧠 HEAP PROTECTION (Anti-Frag Engine):** Scrubbed all `String` and `std::vector` objects from the transmission loop. We parse the datagram entirely in-place. Zero allocations = zero memory "Swiss cheese" fragmentation = infinite uptime.
-*   **🏠 HOME ASSISTANT AUTO-DISCOVERY:** Enable it in the WebUI, and your meter instantly appears in Home Assistant with 25 fully configured sensors. No YAML required!
+*   **🏠 PRO HOME ASSISTANT INTEGRATION:** 
+    *   **Dynamic Discovery:** (v1.2.6) ESP now "listens" for 30s to see which sensors your meter actually provides before registering them in HA.
+    *   **Branding:** (v1.2.7) Customizable Manufacturer, Model, and Friendly Name in `settings.h`.
+    *   **Visit Device Button:** (v1.2.7) Direct link to the ESP's WebUI from the Home Assistant Device page.
     *   **Native Energy Dashboard:** Fully tagged with the correct `state_class` and `device_class` to work out-of-the-box with HA's built-in Energy tracking.
-    *   **LWT (Last Will & Testament):** Your meter now has a persistent status topic. If it loses power, Home Assistant immediately marks all 25 sensors as "Unavailable".
-    *   **Diagnostic Sensors:** Monitor the ESP's **WiFi RSSI (Signal Strength)** and **Local IP Address** straight from the Home Assistant device page.
-    *   **TCP Overflow Protection:** The massive discovery payload is now metered to prevent the ESP8266 WiFi stack from choking on boot.
+    *   **LWT (Last Will & Testament):** If it loses power, Home Assistant immediately marks all sensors as "Unavailable".
 *   **🕵️ SMART CHANGE DETECTION:** Only sends MQTT data if the value actually changes (with a 20s heartbeat). Saves your WiFi and your MQTT broker from unnecessary noise.
 *   **🛡️ STACK SAFETY:** Moved large MQTT buffers to static memory. Say goodbye to Stack Overflows.
 *   **💾 CRASH REPORTING:** If it reboots, it tells you *why* over MQTT (`/last_reset`). Milestone tracking pinpointing exactly where it failed.
@@ -40,10 +41,10 @@ The original code used `std::string`, `String`, and vectors for parsing. On an E
 
 ### 📉 SMART CHANGE DETECTION (Efficiency)
 Modern P1 meters (DSMR 5.0) blast data every second. Sending 20+ MQTT messages every second is a massive waste of WiFi juice and CPU cycles. 
-**v1.2.5** caches the last value of every single sensor. It only hits the radio if the value moves or if the 20s "heartbeat" timer hits. Your Home Assistant gets instant updates on power spikes, but stays quiet when nothing is happening. 🤫
+**v1.2.0** caches the last value of every single sensor. It only hits the radio if the value moves or if the 20s "heartbeat" timer hits. Your Home Assistant gets instant updates on power spikes, but stays quiet when nothing is happening. 🤫
 
 ### 🧬 POST-MORTEM TELEMETRY (Crash Debugging)
-Ever wonder why your ESP just "stopped" responding? **v1.2.5** captures the `ResetReason` from the bootloader and the `Milestone` from RTC memory. 
+Ever wonder why your ESP just "stopped" responding? **v1.2.0** captures the `ResetReason` from the bootloader and the `Milestone` from RTC memory. 
 - **Milestones:** We track if it was `Booting`, `WiFi Connecting`, `Reading P1`, or `Sending MQTT` when it died. 
 - **MQTT Report:** On the next boot, it publishes the full autopsy report to `.../last_reset`.
 
@@ -111,6 +112,7 @@ For security and performance, the WebUI **shuts down** once the meter connects t
 ---
 
 ### 📜 VERSION HISTORY
+- **v1.2.7** - 2026-03-20: Added Pro-Branding (Manufacturer, Model) and Configuration URL support for Home Assistant.
 - **v1.2.6** - 2026-03-20: Implemented Dynamic HA Discovery (ESP now "listens" for 30s to see which sensors your meter actually provides before registering them in HA). Fixed precision bug for Current sensors (was locked at 1.00A).
 - **v1.2.5** - 2026-03-20: Refactored P1 parsing for Gas (supports standard and Fluvius codes). Fixed robust getValue extraction (missing characters fix). Added proper float scaling for Voltage, Current, and Frequency topics.
 - **v1.2.4** - 2026-03-20: Hotfix - Memory corruption fix in EEPROM read and checkbox ID mismatch.
