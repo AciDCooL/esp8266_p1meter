@@ -1,0 +1,52 @@
+<svg width="450" height="650" viewBox="0 0 450 650" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="450" height="650" fill="#0a0a0a" />
+  
+  <!-- Outer Wrap / Glow -->
+  <rect x="25" y="25" width="400" height="600" fill="#0a0a0a" stroke="#0f0" stroke-width="2" rx="5" />
+  <rect x="25" y="25" width="400" height="600" fill="none" stroke="#0f0" stroke-width="10" opacity="0.1" rx="5" />
+
+  <!-- Header -->
+  <text x="225" y="80" fill="#0f0" font-family="monospace" font-size="24" font-weight="bold" text-anchor="middle" style="text-shadow: 0 0 5px #0f0;">ESP8266 P1-METER</text>
+  <text x="225" y="110" fill="#0f0" font-family="monospace" font-size="14" text-anchor="middle">Connected to: MyHomeWiFi</text>
+
+  <!-- Form Fields -->
+  <!-- MQTT Host -->
+  <text x="50" y="150" fill="#0f0" font-family="monospace" font-size="12">MQTT hostname</text>
+  <rect x="50" y="160" width="350" height="40" fill="#111" stroke="#0f0" stroke-width="1" />
+  <text x="60" y="185" fill="#0f0" font-family="monospace" font-size="16">192.168.1.100</text>
+
+  <!-- MQTT Port -->
+  <text x="50" y="220" fill="#0f0" font-family="monospace" font-size="12">MQTT port</text>
+  <rect x="50" y="230" width="350" height="40" fill="#111" stroke="#0f0" stroke-width="1" />
+  <text x="60" y="255" fill="#0f0" font-family="monospace" font-size="16">1883</text>
+
+  <!-- MQTT User -->
+  <text x="50" y="290" fill="#0f0" font-family="monospace" font-size="12">MQTT user</text>
+  <rect x="50" y="300" width="350" height="40" fill="#111" stroke="#0f0" stroke-width="1" />
+  <text x="60" y="325" fill="#0f0" font-family="monospace" font-size="16">mqtt_user</text>
+
+  <!-- MQTT Pass -->
+  <text x="50" y="360" fill="#0f0" font-family="monospace" font-size="12">MQTT pass</text>
+  <rect x="50" y="370" width="350" height="40" fill="#111" stroke="#0f0" stroke-width="1" />
+  <text x="60" y="395" fill="#0f0" font-family="monospace" font-size="16">••••••••••••</text>
+
+  <!-- Checkbox Section -->
+  <rect x="50" y="430" width="20" height="20" fill="#111" stroke="#0f0" stroke-width="1" />
+  <path d="M54 440 l4 4 l8 -8" stroke="#0f0" stroke-width="2" fill="none" />
+  <text x="80" y="445" fill="#0f0" font-family="monospace" font-size="16">Enable HA Discovery</text>
+
+  <!-- Save Button -->
+  <rect x="50" y="480" width="350" height="50" fill="#0f0" />
+  <text x="225" y="512" fill="#000" font-family="monospace" font-size="18" font-weight="bold" text-anchor="middle">SAVE SETTINGS</text>
+
+  <!-- Secondary Buttons -->
+  <rect x="50" y="550" width="170" height="40" fill="#0f0" />
+  <text x="135" y="575" fill="#000" font-family="monospace" font-size="14" font-weight="bold" text-anchor="middle">INFO</text>
+
+  <rect x="230" y="550" width="170" height="40" fill="#0f0" />
+  <text x="315" y="575" fill="#000" font-family="monospace" font-size="14" font-weight="bold" text-anchor="middle">UPDATE</text>
+
+  <!-- Footer Decor -->
+  <text x="225" y="615" fill="#0f0" font-family="monospace" font-size="10" text-anchor="middle" opacity="0.5">ESTABLISHED 2026 // NO-CRASH EDITION</text>
+</svg>

@@ -9,6 +9,8 @@
 
 # ⚡ ESP8266 P1-METER ⚡ [v1.3.0 - 2026 EDITION]
 
+![WebUI Preview](assets/webui_preview.svg)
+
 > "Stabilizing the grid, one telegram at a time." 🛠️💊
 
 This is a high-performance, ultra-stable P1 Meter firmware for the **Wemos D1 Mini / ESP8266**. Re-engineered in 2026 to fix legacy buffer overflows, memory fragmentation, and bring true "plug-and-play" Home Assistant integration.
