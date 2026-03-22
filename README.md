@@ -5,7 +5,7 @@
  | |____ ____) | |       / /|_| (_) |  | |  / /_ | | (_) / /_ / /  / /_|_| 
  |______|_____/|_|      /_/(_) \___/   |_| |____||_|\___/____/_/  |____(_)
                                                                            
-# ⚡ ESP8266 P1-METER ⚡ [v1.2.8 - 2026 EDITION]
+# ⚡ ESP8266 P1-METER ⚡ [v1.3.0 - 2026 EDITION]
 
 > "Stabilizing the grid, one telegram at a time." 🛠️💊
 
@@ -13,7 +13,7 @@ This is a high-performance, ultra-stable P1 Meter firmware for the **Wemos D1 Mi
 
 ---
 
-## 🚀 WHAT'S NEW IN v1.2.8 (THE "NO-CRASH" PATCH)
+## 🚀 WHAT'S NEW IN v1.3.0 (THE "PRECISION" PATCH)
 
 We went through the code with a fine-toothed comb to ensure this thing runs for months without a stutter. 
 
@@ -111,6 +111,7 @@ For security and performance, the WebUI **shuts down** once the meter connects t
 ---
 
 ### 📜 VERSION HISTORY
+- **v1.3.0** - 2026-03-20: Precision hardening. Added European locale support (comma separator fix) and initialized all metrics to 0 to prevent junk data on boot.
 - **v1.2.8** - 2026-03-20: Removed redundant configuration_url. Hardcoded HA Branding options in settings.h.
 - **v1.2.7** - 2026-03-20: Added Pro-Branding (Manufacturer, Model) and Configuration URL support for Home Assistant.
 - **v1.2.6** - 2026-03-20: Implemented Dynamic HA Discovery (ESP now "listens" for 30s to see which sensors your meter actually provides before registering them in HA). Fixed precision bug for Current sensors (was locked at 1.00A).

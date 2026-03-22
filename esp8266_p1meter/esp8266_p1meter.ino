@@ -1,9 +1,9 @@
 /* 
- * ESP8266 P1 Meter - v1.2.9
+ * ESP8266 P1 Meter - v1.3.0
  * Re-engineered for maximum stability, zero heap fragmentation, 
  * and native Home Assistant Auto-Discovery.
  */
-#define VERSION "1.2.9"
+#define VERSION "1.3.0"
 
 #include <EEPROM.h>
 #include <DNSServer.h>
