@@ -111,16 +111,17 @@ For security and performance, the WebUI **shuts down** once the meter connects t
 ---
 
 ### 📜 VERSION HISTORY
-- **v1.3.0** - 2026-03-20: Precision hardening. Added European locale support (comma separator fix) and initialized all metrics to 0 to prevent junk data on boot.
-- **v1.2.8** - 2026-03-20: Removed redundant configuration_url. Hardcoded HA Branding options in settings.h.
-- **v1.2.7** - 2026-03-20: Added Pro-Branding (Manufacturer, Model) and Configuration URL support for Home Assistant.
-- **v1.2.6** - 2026-03-20: Implemented Dynamic HA Discovery (ESP now "listens" for 30s to see which sensors your meter actually provides before registering them in HA). Fixed precision bug for Current sensors (was locked at 1.00A).
-- **v1.2.5** - 2026-03-20: Refactored P1 parsing for Gas (supports standard and Fluvius codes). Fixed robust getValue extraction (missing characters fix). Added proper float scaling for Voltage, Current, and Frequency topics.
-- **v1.2.4** - 2026-03-20: Hotfix - Memory corruption fix in EEPROM read and checkbox ID mismatch.
-- **v1.2.3** - 2026-03-20: Hotfix - Fixed WebUI 'Save' button visibility and added dynamic EEPROM state-awareness.
-- **v1.2.2** - 2026-03-20: Hotfix - Fixed HA Auto-Discovery topic structure to properly group all entities into a single "Device" in Home Assistant. Upgraded Hacker WebUI to be mobile-responsive.
-- **v1.2.1** - 2026-03-20: Hotfix - MQTT TCP buffer overflow protection and Client ID collision fix during HA discovery burst.
-- **v1.2.0** - 2026-03-20: HA Auto-Discovery, Hacker UI, 3-Phase Metrics, Zero-Allocation Anti-Frag Engine.
+- **v1.3.0** - 2026-03-22: Precision hardening. Added European locale support (comma separator fix) and initialized all metrics to 0 to prevent junk data on boot.
+- **v1.2.9** - 2026-03-22: feat: unique hardware IDs for HA, remove config_url.
+- **v1.2.8** - 2026-03-22: Removed redundant configuration_url. Hardcoded HA Branding options in settings.h.
+- **v1.2.7** - 2026-03-22: Added Pro-Branding (Manufacturer, Model) and Configuration URL support for Home Assistant.
+- **v1.2.6** - 2026-03-21: Implemented Dynamic HA Discovery (ESP now "listens" for 30s to see which sensors your meter actually provides before registering them in HA). Fixed precision bug for Current sensors (was locked at 1.00A).
+- **v1.2.5** - 2026-03-21: Refactored P1 parsing for Gas (supports standard and Fluvius codes). Fixed robust getValue extraction (missing characters fix). Added proper float scaling for Voltage, Current, and Frequency topics.
+- **v1.2.4** - 2026-03-21: Hotfix - Memory corruption fix in EEPROM read and checkbox ID mismatch.
+- **v1.2.3** - 2026-03-21: Hotfix - Fixed WebUI 'Save' button visibility and added dynamic EEPROM state-awareness.
+- **v1.2.2** - 2026-03-21: Hotfix - Fixed HA Auto-Discovery topic structure to properly group all entities into a single "Device" in Home Assistant. Upgraded Hacker WebUI to be mobile-responsive.
+- **v1.2.1** - 2026-03-21: Hotfix - MQTT TCP buffer overflow protection and Client ID collision fix during HA discovery burst.
+- **v1.2.0** - 2026-03-21: HA Auto-Discovery, Hacker UI, 3-Phase Metrics, Zero-Allocation Anti-Frag Engine.
 - **v1.1.0** - Buffer overflow fixes, MQTT buffer increase, and Crash milestones.
 - **v1.0.0** - The OG release.
 
