@@ -59,6 +59,30 @@ Ever wonder why your ESP just "stopped" responding? **v1.2.0** captures the `Res
 
 ---
 
+## 🔌 CONNECTING TO THE P1 METER
+
+Connect the ESP8266 to an RJ11 cable/connector following the diagram below.
+
+**Note:** When using a 4-pin RJ11 connector (instead of a 6-pin connector), pin 1 and 6 are the pins that are not present, so the first pin is pin 2 and the last pin is pin 5.
+
+| P1 pin | ESP8266 Pin |
+| :--- | :--- |
+| 2 - RTS | 3.3v |
+| 3 - GND | GND |
+| 4 - | |
+| 5 - RXD (data) | RX (gpio3) |
+
+On most Landis + Gyr models, a **10K resistor** should be used between the ESP's 3.3v and the P1's DATA (RXD) pin. While some guides mention RTS requires 5V (VIN) to activate the P1 port, 3.3V is typically sufficient for most modern meters.
+
+### Wiring Diagrams:
+![Standard Wiring](assets/esp8266_p1meter_bb.png)
+*Standard wiring diagram with external power.*
+
+![Powered by Meter](assets/esp8266_p1meter_bb_PoweredByMeter.png)
+*Alternative wiring: Powered directly by the P1 meter (if supported by your meter model).*
+
+---
+
 ## 📡 MQTT TOPICS & METRICS
 
 Your automations stay the same. We kept the legacy structure but made it faster and added missing 3-Phase metrics.
@@ -68,13 +92,11 @@ Your automations stay the same. We kept the legacy structure but made it faster 
 | :--- | :--- |
 | `sensors/power/p1meter/actual_consumption` | Instant W usage |
 | `sensors/power/p1meter/l1_instant_power_usage` | L1, L2, L3 Usage (W) |
-| `sensors/power/p1meter/l1_voltage` | L1, L2, L3 Voltage (V) |
+| `sensors/power/p1meter/l1_voltage` | **NEW:** L1, L2, L3 Voltage (V) |
 | `sensors/power/p1meter/frequency` | Line Frequency (Hz) |
 | `sensors/power/p1meter/gas_meter_m3` | Gas Meter (m³) |
 | `sensors/power/p1meter/last_reset` | Post-mortem crash report |
 | `hass/status` | Online/Offline status with Version ID |
-
-*(Note: Enabling Home Assistant Auto-Discovery does **not** change these topics. It just maps them for HA automatically).*
 
 ---
 
@@ -124,5 +146,10 @@ For security and performance, the WebUI **shuts down** once the meter connects t
 - **v1.2.0** - 2026-03-21: HA Auto-Discovery, Hacker UI, 3-Phase Metrics, Zero-Allocation Anti-Frag Engine.
 - **v1.1.0** - Buffer overflow fixes, MQTT buffer increase, and Crash milestones.
 - **v1.0.0** - The OG release.
+
+---
+
+### ❤️ CREDITS
+A huge thank you to [Daniel Jong](https://github.com/daniel-jong) for the original implementation and the foundation of this project. This 2026 edition builds upon his excellent work to provide even greater stability and native integration features.
 
 **"Stay static, stay stable."** ✌️💀
