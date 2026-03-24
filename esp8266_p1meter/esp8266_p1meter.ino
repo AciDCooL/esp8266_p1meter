@@ -1,9 +1,9 @@
 /* 
- * ESP8266 P1 Meter - v1.4.8
+ * ESP8266 P1 Meter - v1.4.9
  * Re-engineered for maximum stability, zero heap fragmentation, 
  * and native Home Assistant Auto-Discovery.
  */
-#define VERSION "1.4.8"
+#define VERSION "1.4.9"
 
 // * Libraries
 #include <EEPROM.h>
@@ -448,6 +448,7 @@ void setup_mdns() { if (MDNS.begin(HOSTNAME)) MDNS.addService("http", "tcp", 80)
 
 void setup() {
     EEPROM.begin(512);
+    Serial.setRxBufferSize(2048); // Increase RX buffer to 2048 to prevent drops during WebUI/MQTT tasks
     Serial.begin(BAUD_RATE, SERIAL_8N1, SERIAL_FULL);
     ESP.rtcUserMemoryRead(RTC_BASE_ADDR, (uint32_t*)&rtc_persistent, sizeof(rtc_persistent));
     const char* m_name = "Unknown";
