@@ -14,26 +14,22 @@ This is a high-performance, ultra-stable P1 Meter firmware for the **Wemos D1 Mi
 
 ---
 
-## 🚀 WHAT'S NEW IN v1.4.4 (THE "NON-BLOCKING" PATCH)
+## 🚀 WHAT'S NEW IN v1.5.5 (THE "PRO" PATCH)
 
 We went through the code with a fine-toothed comb to ensure this thing runs for months without a stutter. 
 
-*   **⚡ ZERO-BLOCKING SERIAL (v1.4.4):** Completely refactored the P1 serial reading logic. It no longer uses blocking timeouts, ensuring the loop remains fast even when no data is arriving.
-*   **🌐 NON-BLOCKING WEB-UI (v1.4.0):** The web server is now **Asynchronous**. It runs 24/7 without slowing down the P1 meter parsing. You can now perform browser-based OTA updates at `/update` anytime!
+*   **⚡ ZERO-BLOCKING SERIAL (v1.5.3):** Completely refactored the P1 serial reading logic. It no longer uses blocking timeouts, and features **Smart Garbage Collection** to instantly discard fragmented packets. The loop remains fast even during heavy P1 bursts.
+*   **🌐 24/7 OTA WEB-UI:** The update portal at `/update` is now always online, powered by **ElegantOTA v3**. It runs in the background and will never disrupt your P1 data flow.
+*   **🔒 OTA SECURITY (v1.5.1):** The OTA portal is now protected by HTTP Basic Auth. You can dynamically set your custom OTA password in the main WiFiManager configuration portal.
+*   **🎯 NATIVE FLOAT PRECISION (v1.5.5):** Architectural fix for metric accuracy. Power metrics are still efficiently converted to Integers (Watts) for the HA Energy Dashboard, but Telemetry metrics (Voltage, Current, Gas) are now natively parsed and transmitted as high-precision floats, preventing artificial truncation.
 *   **🛡️ THE SANITY SHIELD (v1.3.1):** Every P1 telegram is now validated against physically impossible spikes. If a reading jumps more than 10kWh in 1 second, it is automatically discarded. No more vertical spikes in your HA Energy Dashboard!
 *   **💾 RTC STATE AWARENESS (v1.3.1):** Critical totals are stored in **RTC User Memory** (SRAM). It survives soft-reboots and OTA updates without wearing out the Flash memory.
-*   **⚡ 1s REAL-TIME UPDATES:** Polling interval reduced from 30s to 1s. Catch those power spikes as they happen.
 *   **🧠 HEAP PROTECTION (Anti-Frag Engine):** Scrubbed all `String` and `std::vector` objects from the transmission loop. We parse the datagram entirely in-place. Zero allocations = zero memory "Swiss cheese" fragmentation = infinite uptime.
 *   **🏠 PRO HOME ASSISTANT INTEGRATION:** 
-    *   **Dynamic Discovery:** ESP now "listens" for 30s to see which sensors your meter actually provides before registering them in HA.
-    *   **Branding:** Customizable Manufacturer, Model, and Friendly Name hardcoded in `settings.h`.
+    *   **Dynamic Discovery:** ESP now "listens" to see which sensors your meter actually provides before registering them in HA.
     *   **Native Energy Dashboard:** Fully tagged with the correct `state_class` and `device_class` to work out-of-the-box with HA's built-in Energy tracking.
-    *   **LWT (Last Will & Testament):** If it loses power, Home Assistant immediately marks all sensors as "Unavailable".
-*   **🕵️ SMART CHANGE DETECTION:** Only sends MQTT data if the value actually changes (with a 20s heartbeat). Saves your WiFi and your MQTT broker from unnecessary noise.
-*   **🛡️ STACK SAFETY:** Moved large MQTT buffers to static memory. Say goodbye to Stack Overflows.
+    *   **LWT (Last Will & Testament):** Instantly alerts HA if the device goes offline, and gracefully disconnects during OTA updates.
 *   **💾 CRASH REPORTING:** If it reboots, it tells you *why* over MQTT (`/last_reset`). Milestone tracking pinpointing exactly where it failed.
-*   **😎 HACKER WEB-UI:** The WiFi config portal has been upgraded with a lean, neon-green "terminal" aesthetic. Fully mobile-responsive and state-aware.
-*   **🧱 BUFFER & EEPROM HARDENING:** Fixed the infamous `telegram` array overflow that was wiping WiFi settings, and added a read-before-write check to massively extend EEPROM lifespan.
 
 ---
 
