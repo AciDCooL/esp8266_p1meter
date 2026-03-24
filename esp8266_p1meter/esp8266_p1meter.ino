@@ -1,9 +1,9 @@
 /* 
- * ESP8266 P1 Meter - v1.5.3
+ * ESP8266 P1 Meter - v1.5.4
  * Re-engineered for maximum stability, zero heap fragmentation, 
  * and native Home Assistant Auto-Discovery.
  */
-#define VERSION "1.5.3"
+#define VERSION "1.5.4"
 
 // * Libraries
 #include <EEPROM.h>
@@ -585,11 +585,11 @@ void setup() {
             if (mqtt_client.connected()) {
                 char status_topic[128]; snprintf(status_topic, sizeof(status_topic), "%s/status", MQTT_ROOT_TOPIC);
                 mqtt_client.publish(status_topic, "offline", true); // Send LWT manually
+                mqtt_client.loop(); // flush
                 mqtt_client.disconnect();
             }
             update_rtc_totals(); // Save final state
-            delay(500); // Give MQTT time to flush
-            ESP.restart(); // Manual reboot
+            // Let ElegantOTA handle the final HTTP response and auto-reboot.
         } else {
             Serial.println("OTA Update Failed. Resuming normal operations.");
             ota_in_progress = false;
