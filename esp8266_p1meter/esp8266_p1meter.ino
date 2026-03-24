@@ -1,9 +1,9 @@
 /* 
- * ESP8266 P1 Meter - v1.3.0
+ * ESP8266 P1 Meter - v1.3.1
  * Re-engineered for maximum stability, zero heap fragmentation, 
  * and native Home Assistant Auto-Discovery.
  */
-#define VERSION "1.3.0"
+#define VERSION "1.3.1"
 
 #include <EEPROM.h>
 #include <DNSServer.h>
@@ -46,19 +46,44 @@ WiFiClient espClient;
 PubSubClient mqtt_client(espClient);
 
 // * Reset and Milestone tracking
-char last_reset_info[128] = "";
 struct {
     uint32_t marker; 
     uint32_t milestone;
-} rtc_data;
+    long last_con_high;
+    long last_con_low;
+    long last_ret_high;
+    long last_ret_low;
+    long last_gas;
+} rtc_persistent;
 
 #define RTC_MARKER 0xDEADBEEF
 #define RTC_BASE_ADDR 64
 
+bool system_verified = false;
+int valid_telegram_count = 0;
+#define STABILIZATION_THRESHOLD 3
+
 void set_milestone(uint32_t m) {
-    rtc_data.milestone = m;
-    rtc_data.marker = RTC_MARKER;
-    ESP.rtcUserMemoryWrite(RTC_BASE_ADDR, (uint32_t*)&rtc_data, sizeof(rtc_data));
+    rtc_persistent.milestone = m;
+    rtc_persistent.marker = RTC_MARKER;
+    ESP.rtcUserMemoryWrite(RTC_BASE_ADDR, (uint32_t*)&rtc_persistent, sizeof(rtc_persistent));
+}
+
+void update_rtc_totals() {
+    rtc_persistent.last_con_high = CONSUMPTION_HIGH_TARIF;
+    rtc_persistent.last_con_low = CONSUMPTION_LOW_TARIF;
+    rtc_persistent.last_ret_high = RETURNDELIVERY_HIGH_TARIF;
+    rtc_persistent.last_ret_low = RETURNDELIVERY_LOW_TARIF;
+    rtc_persistent.last_gas = GAS_METER_M3;
+    rtc_persistent.marker = RTC_MARKER;
+    ESP.rtcUserMemoryWrite(RTC_BASE_ADDR, (uint32_t*)&rtc_persistent, sizeof(rtc_persistent));
+}
+
+bool is_data_sane(long current, long last, long max_delta) {
+    if (last <= 0) return true; // Initial boot
+    long delta = current - last;
+    // For total_increasing, delta must be positive and below threshold
+    return (delta >= 0 && delta < max_delta);
 }
 
 // System LED blinker
@@ -111,6 +136,9 @@ const HASensor sensors[] = {
 bool seen_metrics[SENSOR_COUNT] = {false};
 bool discovery_published = false;
 unsigned long boot_time = 0;
+char last_reset_info[128] = "";
+
+#define MAX_ENERGY_DELTA 10000 // Max 10kWh jump in 1 second (physically impossible)
 
 void mark_seen(const char* id) {
     for (size_t i = 0; i < SENSOR_COUNT; i++) {
@@ -186,8 +214,11 @@ bool mqtt_reconnect() {
     snprintf(status_topic, sizeof(status_topic), "%s/status", MQTT_ROOT_TOPIC);
     snprintf(client_id, sizeof(client_id), "%s-%06X", HOSTNAME, ESP.getChipId());
 
+    // Connect with LWT set to "offline"
     if (mqtt_client.connect(client_id, MQTT_USER, MQTT_PASS, status_topic, 1, true, "offline")) {
-        mqtt_client.publish(status_topic, "online", true);
+        // GATED: We do NOT publish "online" here yet. 
+        // System stays "offline" until valid_telegram_count hits threshold.
+        
         if (strlen(last_reset_info) > 0) {
             char r_topic[128], r_payload[200];
             snprintf(r_topic, sizeof(r_topic), "%s/last_reset", MQTT_ROOT_TOPIC);
@@ -237,6 +268,37 @@ void send_metric(const char* name, long metric, long& last_value, int divisor) {
 
 void send_data_to_broker() {
     set_milestone(5); 
+
+    // Validation Shield: compare current vs RTC persistent totals
+    bool data_is_valid = true;
+    if (rtc_persistent.marker == RTC_MARKER) {
+        if (!is_data_sane(CONSUMPTION_HIGH_TARIF, rtc_persistent.last_con_high, MAX_ENERGY_DELTA)) data_is_valid = false;
+        if (!is_data_sane(CONSUMPTION_LOW_TARIF, rtc_persistent.last_con_low, MAX_ENERGY_DELTA)) data_is_valid = false;
+        if (!is_data_sane(RETURNDELIVERY_HIGH_TARIF, rtc_persistent.last_ret_high, MAX_ENERGY_DELTA)) data_is_valid = false;
+        if (!is_data_sane(RETURNDELIVERY_LOW_TARIF, rtc_persistent.last_ret_low, MAX_ENERGY_DELTA)) data_is_valid = false;
+        if (!is_data_sane(GAS_METER_M3, rtc_persistent.last_gas, MAX_ENERGY_DELTA)) data_is_valid = false;
+    }
+
+    if (!data_is_valid) {
+        Serial.println(F("SANITY SHIELD: Dropping P1 packet due to impossible spikes."));
+        return;
+    }
+
+    // System Gating: Only go "online" after enough valid, sane telegrams
+    if (!system_verified) {
+        valid_telegram_count++;
+        if (valid_telegram_count >= STABILIZATION_THRESHOLD) {
+            system_verified = true;
+            char status_topic[128];
+            snprintf(status_topic, sizeof(status_topic), "%s/status", MQTT_ROOT_TOPIC);
+            mqtt_client.publish(status_topic, "online", true);
+            Serial.println(F("SYSTEM VERIFIED: Device is now Online in HA."));
+        } else {
+            return; // Stay "offline" during stabilization
+        }
+    }
+
+    // All metrics sent via send_metric (which now checks 'seen' and 'verified')
     send_metric("consumption_low_tarif", CONSUMPTION_LOW_TARIF, LAST_CON_LOW);
     send_metric("consumption_high_tarif", CONSUMPTION_HIGH_TARIF, LAST_CON_HIGH);
     send_metric("returndelivery_low_tarif", RETURNDELIVERY_LOW_TARIF, LAST_RET_LOW);
@@ -279,6 +341,9 @@ void send_data_to_broker() {
         char t[128]; snprintf(t, sizeof(t), "%s/last13months_peaks_json", MQTT_ROOT_TOPIC);
         send_mqtt_json(t, Last13MonthsPeaks_json); 
     }
+
+    // Update RTC memory with latest known safe totals
+    update_rtc_totals();
     set_milestone(3);
 }
 

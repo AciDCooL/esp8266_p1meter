@@ -1,12 +1,11 @@
-```text
-  _____ ____  ____   ___  ____   __      ____  _      __  __ _____ _____ _____ ____  
- | ____/ ___||  _ \ ( _ )(  _ \ / /_    |  _ \/ |    |  \/  | ____|_   _| ____|  _ \ 
- |  _| \___ \| |_) |/ _ \/ _ \ | '_ \   | |_) | |    | |\/| |  _|   | | |  _| | |_) |
- | |___ ___) |  __/| (_)  (_) || (_) |  |  __/| |    | |  | | |___  | | | |___|  _ < 
- |_____|____/|_|    \___/\___/ \___/   |_|   |_|    |_|  |_|_____| |_| |_____|_| \_\
-```
-
-# ⚡ ESP8266 P1-METER ⚡ [v1.3.0 - 2026 EDITION]
+  ______  _____ _____   ___ ___   __   __   ___  __   __ ___ _____ ___ ___ 
+ |  ____|/ ____|  __ \ / _ \__ \ / /  /_ | |__ \/_ | / /|__ \____ |__ \__ \
+ | |__  | (___ | |__) | (_) | ) / /_   | |    ) || |/ /_   ) |  / /  ) | ) |
+ |  __|  \___ \|  ___/ \__, |/ / '_ \  | |   / / | | '_ \ / /  / /  / / / / 
+ | |____ ____) | |       / /|_| (_) |  | |  / /_ | | (_) / /_ / /  / /_|_| 
+ |______|_____/|_|      /_/(_) \___/   |_| |____||_|\___/____/_/  |____(_)
+                                                                           
+# ⚡ ESP8266 P1-METER ⚡ [v1.3.1 - 2026 EDITION]
 
 ![WebUI Preview](assets/webui_preview.svg)
 
@@ -16,10 +15,13 @@ This is a high-performance, ultra-stable P1 Meter firmware for the **Wemos D1 Mi
 
 ---
 
-## 🚀 WHAT'S NEW IN v1.3.0 (THE "PRECISION" PATCH)
+## 🚀 WHAT'S NEW IN v1.3.1 (THE "INDUSTRIAL" PATCH)
 
 We went through the code with a fine-toothed comb to ensure this thing runs for months without a stutter. 
 
+*   **🛡️ THE SANITY SHIELD (v1.3.1):** Every P1 telegram is now validated against physically impossible spikes. If a reading jumps more than 10kWh in 1 second, it is automatically discarded. No more vertical spikes in your HA Energy Dashboard!
+*   **💾 RTC STATE AWARENESS (v1.3.1):** Critical totals are stored in **RTC User Memory** (SRAM). It survives soft-reboots and OTA updates without wearing out the Flash memory. The ESP now has "context" after a crash.
+*   **🚦 GATED AVAILABILITY (v1.3.1):** The device stays "Unavailable" in Home Assistant for the first few seconds of boot. It only goes "Online" once it has verified 3 consecutive valid and sane telegrams.
 *   **⚡ 1s REAL-TIME UPDATES:** Polling interval reduced from 30s to 1s. Catch those power spikes as they happen.
 *   **🧠 HEAP PROTECTION (Anti-Frag Engine):** Scrubbed all `String` and `std::vector` objects from the transmission loop. We parse the datagram entirely in-place. Zero allocations = zero memory "Swiss cheese" fragmentation = infinite uptime.
 *   **🏠 PRO HOME ASSISTANT INTEGRATION:** 
@@ -27,8 +29,8 @@ We went through the code with a fine-toothed comb to ensure this thing runs for 
     *   **Branding:** Customizable Manufacturer, Model, and Friendly Name hardcoded in `settings.h`.
     *   **Native Energy Dashboard:** Fully tagged with the correct `state_class` and `device_class` to work out-of-the-box with HA's built-in Energy tracking.
     *   **LWT (Last Will & Testament):** If it loses power, Home Assistant immediately marks all sensors as "Unavailable".
-*   **🕵️ SMART CHANGE DETECTION:** Only sends MQTT data if the value actually changes (with a 20s heartbeat). Saves your WiFi and your MQTT broker from unnecessary noise.
-*   **🛡️ STACK SAFETY:** Moved large MQTT buffers to static memory. Say goodbye to Stack Overflows.
+*   **🕵️ SMART CHANGE DETECTION:** Only sends MQTT data if the value actually changes (with a 20s heartbeat).
+*   **🛡️ STACK SAFETY:** Moved large MQTT buffers to static memory. 
 *   **💾 CRASH REPORTING:** If it reboots, it tells you *why* over MQTT (`/last_reset`). Milestone tracking pinpointing exactly where it failed.
 *   **😎 HACKER WEB-UI:** The WiFi config portal has been upgraded with a lean, neon-green "terminal" aesthetic. Fully mobile-responsive and state-aware.
 *   **🧱 BUFFER & EEPROM HARDENING:** Fixed the infamous `telegram` array overflow that was wiping WiFi settings, and added a read-before-write check to massively extend EEPROM lifespan.
@@ -39,7 +41,7 @@ We went through the code with a fine-toothed comb to ensure this thing runs for 
 
 ### 🛡️ THE "ANTI-FRAG" ENGINE (Heap Protection)
 The original code used `std::string`, `String`, and vectors for parsing. On an ESP8266, this is a death sentence. Every time you create a `String`, it allocates RAM. 
-**v1.2.5** uses `snprintf`, direct `char*` pointer iteration, and fixed buffers. It reads data directly out of the raw byte array without creating copies. 
+**v1.3.1** uses `snprintf`, direct `char*` pointer iteration, and fixed buffers. It reads data directly out of the raw byte array without creating copies. 
 
 ### 📉 SMART CHANGE DETECTION (Efficiency)
 Modern P1 meters (DSMR 5.0) blast data every second. Sending 20+ MQTT messages every second is a massive waste of WiFi juice and CPU cycles. 
@@ -49,16 +51,6 @@ Modern P1 meters (DSMR 5.0) blast data every second. Sending 20+ MQTT messages e
 Ever wonder why your ESP just "stopped" responding? **v1.2.0** captures the `ResetReason` from the bootloader and the `Milestone` from RTC memory. 
 - **Milestones:** We track if it was `Booting`, `WiFi Connecting`, `Reading P1`, or `Sending MQTT` when it died. 
 - **MQTT Report:** On the next boot, it publishes the full autopsy report to `.../last_reset`.
-
----
-
-## 🛠️ THE TECH STACK
-
-- **Core:** ESP8266 (Arduino Framework)
-- **Protocol:** DSMR 5.0+ (with inverted Serial RX)
-- **Messaging:** MQTT (PubSubClient)
-- **Config:** WiFiManager (Auto-AP mode if connection fails)
-- **OTA:** Wireless updates ready
 
 ---
 
@@ -107,7 +99,7 @@ Your automations stay the same. We kept the legacy structure but made it faster 
 | :--- | :--- |
 | `sensors/power/p1meter/actual_consumption` | Instant W usage |
 | `sensors/power/p1meter/l1_instant_power_usage` | L1, L2, L3 Usage (W) |
-| `sensors/power/p1meter/l1_voltage` | **NEW:** L1, L2, L3 Voltage (V) |
+| `sensors/power/p1meter/l1_voltage` | L1, L2, L3 Voltage (V) |
 | `sensors/power/p1meter/frequency` | Line Frequency (Hz) |
 | `sensors/power/p1meter/gas_meter_m3` | Gas Meter (m³) |
 | `sensors/power/p1meter/last_reset` | Post-mortem crash report |
@@ -148,16 +140,17 @@ For security and performance, the WebUI **shuts down** once the meter connects t
 ---
 
 ### 📜 VERSION HISTORY
+- **v1.3.1** - 2026-03-22: Industrial Hardening. Implemented the **Sanity Shield** (spike protection), **Gated Availability** (boot verification), and **RTC Persistent State Tracking** (state survives soft reboots).
 - **v1.3.0** - 2026-03-22: Precision hardening. Added European locale support (comma separator fix) and initialized all metrics to 0 to prevent junk data on boot.
 - **v1.2.9** - 2026-03-22: feat: unique hardware IDs for HA, remove config_url.
 - **v1.2.8** - 2026-03-22: Removed redundant configuration_url. Hardcoded HA Branding options in settings.h.
 - **v1.2.7** - 2026-03-22: Added Pro-Branding (Manufacturer, Model) and Configuration URL support for Home Assistant.
-- **v1.2.6** - 2026-03-21: Implemented Dynamic HA Discovery (ESP now "listens" for 30s to see which sensors your meter actually provides before registering them in HA). Fixed precision bug for Current sensors (was locked at 1.00A).
-- **v1.2.5** - 2026-03-21: Refactored P1 parsing for Gas (supports standard and Fluvius codes). Fixed robust getValue extraction (missing characters fix). Added proper float scaling for Voltage, Current, and Frequency topics.
+- **v1.2.6** - 2026-03-21: Implemented Dynamic HA Discovery. Fixed precision bug for Current sensors.
+- **v1.2.5** - 2026-03-21: Refactored P1 parsing for Gas. Fixed robust getValue extraction. Added proper float scaling.
 - **v1.2.4** - 2026-03-21: Hotfix - Memory corruption fix in EEPROM read and checkbox ID mismatch.
 - **v1.2.3** - 2026-03-21: Hotfix - Fixed WebUI 'Save' button visibility and added dynamic EEPROM state-awareness.
-- **v1.2.2** - 2026-03-21: Hotfix - Fixed HA Auto-Discovery topic structure to properly group all entities into a single "Device" in Home Assistant. Upgraded Hacker WebUI to be mobile-responsive.
-- **v1.2.1** - 2026-03-21: Hotfix - MQTT TCP buffer overflow protection and Client ID collision fix during HA discovery burst.
+- **v1.2.2** - 2026-03-21: Hotfix - Fixed HA Auto-Discovery topic structure. Upgraded Hacker WebUI.
+- **v1.2.1** - 2026-03-21: Hotfix - MQTT TCP buffer overflow protection and Client ID collision fix.
 - **v1.2.0** - 2026-03-21: HA Auto-Discovery, Hacker UI, 3-Phase Metrics, Zero-Allocation Anti-Frag Engine.
 - **v1.1.0** - Buffer overflow fixes, MQTT buffer increase, and Crash milestones.
 - **v1.0.0** - The OG release.
