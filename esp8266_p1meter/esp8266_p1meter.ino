@@ -341,7 +341,12 @@ bool decode_telegram(int len) {
         currentCRC = CRC16(currentCRC, (unsigned char *)telegram + endChar, 1);
         char messageCRC[5]; strncpy(messageCRC, telegram + endChar + 1, 4); messageCRC[4] = 0;
         validCRCFound = ((unsigned int)strtol(messageCRC, NULL, 16) == currentCRC);
-        if (!validCRCFound) Serial.printf("CRC FAIL: Calc=%04X, Meter=%s\n", currentCRC, messageCRC);
+        if (!validCRCFound) {
+            char debug_topic[128]; snprintf(debug_topic, sizeof(debug_topic), "%s/debug_crc", MQTT_ROOT_TOPIC);
+            char debug_msg[128]; snprintf(debug_msg, sizeof(debug_msg), "CRC FAIL: Calc=%04X, Meter=%s", currentCRC, messageCRC);
+            mqtt_client.publish(debug_topic, debug_msg, false);
+            Serial.printf("CRC FAIL: Calc=%04X, Meter=%s\n", currentCRC, messageCRC);
+        }
         currentCRC = 0;
     } else currentCRC = CRC16(currentCRC, (unsigned char *)telegram, len);
 
@@ -399,6 +404,18 @@ bool decode_telegram(int len) {
 void processLine(int len) {
     if (len >= P1_MAXLINELENGTH - 2) len = P1_MAXLINELENGTH - 3; 
     telegram[len] = 0; // Null terminate
+    
+    // Remote Debugging: Publish the first few lines to MQTT to verify baud/inversion
+    if (!system_verified && valid_telegram_count == 0) {
+        static int debug_lines = 0;
+        if (debug_lines < 5) {
+            char debug_topic[128]; snprintf(debug_topic, sizeof(debug_topic), "%s/debug_raw", MQTT_ROOT_TOPIC);
+            char debug_payload[256]; snprintf(debug_payload, sizeof(debug_payload), "LEN: %d | DATA: %s", len, telegram);
+            mqtt_client.publish(debug_topic, debug_payload, false);
+            debug_lines++;
+        }
+    }
+
     if (decode_telegram(len)) {
         if (millis() - LAST_UPDATE_SENT > UPDATE_INTERVAL) { send_data_to_broker(); LAST_UPDATE_SENT = millis(); }
     }
