@@ -4,7 +4,7 @@
  | |___ ___) |  __/| (_)  (_) || (_) |  |  __/| |    | |  | | |___  | | | |___|  _ < 
  |_____|____/|_|    \___/\___/ \___/   |_|   |_|    |_|  |_|_____| |_| |_____|_| \_\
 
-# ⚡ ESP8266 P1-METER ⚡ [v1.3.3 - 2026 EDITION]
+# ⚡ ESP8266 P1-METER ⚡ [v1.3.4 - 2026 EDITION]
 
 ![WebUI Preview](assets/webui_preview.svg)
 
@@ -141,6 +141,7 @@ For security and performance, the WebUI **shuts down** once the meter connects t
 ---
 
 ### 📜 VERSION HISTORY
+- **v1.3.4** - 2026-03-22: Hotfix - Resolved "Deadlock of Sanity" where the device would stay offline forever if the first few telegrams were invalid or if the LWT was ghosting. Added `stabilizing` status and detailed CRC/Sanity logging.
 - **v1.3.3** - 2026-03-22: Hotfix - Corrected missing `rtc_persistent` reference in `setup()`.
 - **v1.3.2** - 2026-03-22: Final version sync and documentation cleanup.
 - **v1.3.1** - 2026-03-22: Industrial Hardening. Implemented the **Sanity Shield** (spike protection), **Gated Availability** (boot verification), and **RTC Persistent State Tracking** (state survives soft reboots).

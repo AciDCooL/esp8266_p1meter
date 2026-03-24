@@ -1,9 +1,9 @@
 /* 
- * ESP8266 P1 Meter - v1.3.3
+ * ESP8266 P1 Meter - v1.3.4
  * Re-engineered for maximum stability, zero heap fragmentation, 
  * and native Home Assistant Auto-Discovery.
  */
-#define VERSION "1.3.3"
+#define VERSION "1.3.4"
 
 #include <EEPROM.h>
 #include <DNSServer.h>
@@ -62,6 +62,7 @@ struct {
 bool system_verified = false;
 int valid_telegram_count = 0;
 #define STABILIZATION_THRESHOLD 3
+#define MAX_ENERGY_DELTA 10000 // Max 10kWh jump in 1s
 
 void set_milestone(uint32_t m) {
     rtc_persistent.milestone = m;
@@ -79,11 +80,13 @@ void update_rtc_totals() {
     ESP.rtcUserMemoryWrite(RTC_BASE_ADDR, (uint32_t*)&rtc_persistent, sizeof(rtc_persistent));
 }
 
-bool is_data_sane(long current, long last, long max_delta) {
-    if (last <= 0) return true; // Initial boot
+bool is_data_sane(long current, long last, long max_delta, const char* label) {
+    if (last <= 0) return true; // Initial seed
     long delta = current - last;
-    // For total_increasing, delta must be positive and below threshold
-    return (delta >= 0 && delta < max_delta);
+    if (delta >= 0 && delta < max_delta) return true;
+    
+    Serial.printf("SANITY FAIL [%s]: Current=%ld, Last=%ld, Delta=%ld (Max=%ld)\n", label, current, last, delta, max_delta);
+    return false;
 }
 
 // System LED blinker
@@ -138,8 +141,6 @@ bool discovery_published = false;
 unsigned long boot_time = 0;
 char last_reset_info[128] = "";
 
-#define MAX_ENERGY_DELTA 10000 // Max 10kWh jump in 1 second (physically impossible)
-
 void mark_seen(const char* id) {
     for (size_t i = 0; i < SENSOR_COUNT; i++) {
         if (strcmp(sensors[i].id, id) == 0) {
@@ -156,11 +157,8 @@ void publish_ha_discovery() {
     char topic[128], payload[600], status_topic[128];
     snprintf(status_topic, sizeof(status_topic), "%s/status", MQTT_ROOT_TOPIC);
 
-    // Prepare unique strings for the device based on ChipID
-    char dev_name[64];
+    char dev_name[64], dev_id[32];
     snprintf(dev_name, sizeof(dev_name), "%s-%06X", HA_DEVICE_NAME, ESP.getChipId());
-    
-    char dev_id[32];
     snprintf(dev_id, sizeof(dev_id), "p1meter_%06X", ESP.getChipId());
 
     JsonDocument doc;
@@ -169,16 +167,11 @@ void publish_ha_discovery() {
 
         doc.clear();
         const HASensor& s = sensors[i];
-        
-        // Discovery topic: homeassistant/sensor/p1meter_ID/sensor_id/config
         snprintf(topic, sizeof(topic), "%s/sensor/%s/%s/config", HA_DISCOVERY_PREFIX, dev_id, s.id);
         
         doc["name"] = s.name;
-        
-        char uid[64]; 
-        snprintf(uid, sizeof(uid), "%s_%s", dev_id, s.id);
+        char uid[64]; snprintf(uid, sizeof(uid), "%s_%s", dev_id, s.id);
         doc["unique_id"] = uid;
-        
         char st_topic[128]; snprintf(st_topic, sizeof(st_topic), "%s/%s", MQTT_ROOT_TOPIC, s.id);
         doc["state_topic"] = st_topic;
         doc["availability_topic"] = status_topic;
@@ -214,17 +207,18 @@ bool mqtt_reconnect() {
     snprintf(status_topic, sizeof(status_topic), "%s/status", MQTT_ROOT_TOPIC);
     snprintf(client_id, sizeof(client_id), "%s-%06X", HOSTNAME, ESP.getChipId());
 
-    // Connect with LWT set to "offline"
     if (mqtt_client.connect(client_id, MQTT_USER, MQTT_PASS, status_topic, 1, true, "offline")) {
-        // GATED: We do NOT publish "online" here yet. 
-        // System stays "offline" until valid_telegram_count hits threshold.
-        
+        Serial.println(F("MQTT Connected. Initial status: stabilizing"));
+        mqtt_client.publish(status_topic, "stabilizing", true);
+
         if (strlen(last_reset_info) > 0) {
             char r_topic[128], r_payload[200];
             snprintf(r_topic, sizeof(r_topic), "%s/last_reset", MQTT_ROOT_TOPIC);
             snprintf(r_payload, sizeof(r_payload), "Version: %s | %s", VERSION, last_reset_info);
             mqtt_client.publish(r_topic, r_payload, true);
         }
+        
+        if (system_verified) mqtt_client.publish(status_topic, "online", true);
         if (discovery_published) publish_ha_discovery();
         return true;
     }
@@ -269,22 +263,19 @@ void send_metric(const char* name, long metric, long& last_value, int divisor) {
 void send_data_to_broker() {
     set_milestone(5); 
 
-    // Validation Shield: compare current vs RTC persistent totals
-    bool data_is_valid = true;
+    // Validation Shield
+    bool sane = true;
     if (rtc_persistent.marker == RTC_MARKER) {
-        if (!is_data_sane(CONSUMPTION_HIGH_TARIF, rtc_persistent.last_con_high, MAX_ENERGY_DELTA)) data_is_valid = false;
-        if (!is_data_sane(CONSUMPTION_LOW_TARIF, rtc_persistent.last_con_low, MAX_ENERGY_DELTA)) data_is_valid = false;
-        if (!is_data_sane(RETURNDELIVERY_HIGH_TARIF, rtc_persistent.last_ret_high, MAX_ENERGY_DELTA)) data_is_valid = false;
-        if (!is_data_sane(RETURNDELIVERY_LOW_TARIF, rtc_persistent.last_ret_low, MAX_ENERGY_DELTA)) data_is_valid = false;
-        if (!is_data_sane(GAS_METER_M3, rtc_persistent.last_gas, MAX_ENERGY_DELTA)) data_is_valid = false;
+        if (!is_data_sane(CONSUMPTION_HIGH_TARIF, rtc_persistent.last_con_high, MAX_ENERGY_DELTA, "CON_HIGH")) sane = false;
+        if (!is_data_sane(CONSUMPTION_LOW_TARIF, rtc_persistent.last_con_low, MAX_ENERGY_DELTA, "CON_LOW")) sane = false;
+        if (!is_data_sane(RETURNDELIVERY_HIGH_TARIF, rtc_persistent.last_ret_high, MAX_ENERGY_DELTA, "RET_HIGH")) sane = false;
+        if (!is_data_sane(RETURNDELIVERY_LOW_TARIF, rtc_persistent.last_ret_low, MAX_ENERGY_DELTA, "RET_LOW")) sane = false;
+        if (!is_data_sane(GAS_METER_M3, rtc_persistent.last_gas, MAX_ENERGY_DELTA, "GAS")) sane = false;
     }
 
-    if (!data_is_valid) {
-        Serial.println(F("SANITY SHIELD: Dropping P1 packet due to impossible spikes."));
-        return;
-    }
+    if (!sane) return;
 
-    // System Gating: Only go "online" after enough valid, sane telegrams
+    // Gated Online Transition
     if (!system_verified) {
         valid_telegram_count++;
         if (valid_telegram_count >= STABILIZATION_THRESHOLD) {
@@ -292,13 +283,10 @@ void send_data_to_broker() {
             char status_topic[128];
             snprintf(status_topic, sizeof(status_topic), "%s/status", MQTT_ROOT_TOPIC);
             mqtt_client.publish(status_topic, "online", true);
-            Serial.println(F("SYSTEM VERIFIED: Device is now Online in HA."));
-        } else {
-            return; // Stay "offline" during stabilization
-        }
+            Serial.println(F("VERIFIED: Device is now Online."));
+        } else return;
     }
 
-    // All metrics sent via send_metric (which now checks 'seen' and 'verified')
     send_metric("consumption_low_tarif", CONSUMPTION_LOW_TARIF, LAST_CON_LOW);
     send_metric("consumption_high_tarif", CONSUMPTION_HIGH_TARIF, LAST_CON_HIGH);
     send_metric("returndelivery_low_tarif", RETURNDELIVERY_LOW_TARIF, LAST_RET_LOW);
@@ -341,8 +329,6 @@ void send_data_to_broker() {
         char t[128]; snprintf(t, sizeof(t), "%s/last13months_peaks_json", MQTT_ROOT_TOPIC);
         send_mqtt_json(t, Last13MonthsPeaks_json); 
     }
-
-    // Update RTC memory with latest known safe totals
     update_rtc_totals();
     set_milestone(3);
 }
@@ -364,7 +350,7 @@ unsigned int CRC16(unsigned int crc, unsigned char *buf, int len) {
 
 bool isNumber(const char *res, int len) {
     for (int i = 0; i < len; i++) {
-        if (((res[i] < '0') || (res[i] > '9')) && (res[i] != '.' && res[i] != 0)) return false;
+        if (((res[i] < '0') || (res[i] > '9')) && (res[i] != '.' && res[i] != ',' && res[i] != 0)) return false;
     }
     return true;
 }
@@ -380,6 +366,7 @@ long getValue(const char *buffer, int maxlen, char startchar, char endchar) {
     int l = e - s - 1; if (l <= 0 || l >= 16) return 0;
     char res[16]; memset(res, 0, sizeof(res));
     if (strncpy(res, buffer + s + 1, l)) {
+        for(int i=0; i<l; i++) if(res[i] == ',') res[i] = '.';
         if (isNumber(res, l)) {
             if (endchar == '*') return (1000 * atof(res));
             return atof(res);
@@ -398,6 +385,7 @@ bool decode_telegram(int len) {
         currentCRC = CRC16(currentCRC, (unsigned char *)telegram + endChar, 1);
         char messageCRC[5]; strncpy(messageCRC, telegram + endChar + 1, 4); messageCRC[4] = 0;
         validCRCFound = ((unsigned int)strtol(messageCRC, NULL, 16) == currentCRC);
+        if (!validCRCFound) Serial.printf("CRC FAIL: Calc=%04X, Meter=%s\n", currentCRC, messageCRC);
         currentCRC = 0;
     } else currentCRC = CRC16(currentCRC, (unsigned char *)telegram, len);
 
