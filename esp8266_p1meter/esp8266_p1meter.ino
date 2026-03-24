@@ -1,8 +1,3 @@
-/* 
- * ESP8266 P1 Meter - v1.5.7
- * Re-engineered for maximum stability, zero heap fragmentation, 
- * and native Home Assistant Auto-Discovery.
- */
 #define VERSION "1.5.7"
 
 // * Libraries
