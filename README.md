@@ -4,7 +4,7 @@
  | |___ ___) |  __/| (_)  (_) || (_) |  |  __/| |    | |  | | |___  | | | |___|  _ < 
  |_____|____/|_|    \___/\___/ \___/   |_|   |_|    |_|  |_|_____| |_| |_____|_| \_\
 
-# ⚡ ESP8266 P1-METER ⚡ [v1.4.0 - 2026 EDITION]
+# ⚡ ESP8266 P1-METER ⚡ [v1.4.1 - 2026 EDITION]
 
 ![WebUI Preview](assets/webui_preview.svg)
 
@@ -14,7 +14,7 @@ This is a high-performance, ultra-stable P1 Meter firmware for the **Wemos D1 Mi
 
 ---
 
-## 🚀 WHAT'S NEW IN v1.4.0 (THE "ASYNC" PATCH)
+## 🚀 WHAT'S NEW IN v1.4.1 (THE "DEBUG" PATCH)
 
 We went through the code with a fine-toothed comb to ensure this thing runs for months without a stutter. 
 
@@ -38,16 +38,85 @@ We went through the code with a fine-toothed comb to ensure this thing runs for 
 The original code used `std::string`, `String`, and vectors for parsing. On an ESP8266, this is a death sentence. Every time you create a `String`, it allocates RAM. 
 **v1.4.0** uses `snprintf`, direct `char*` pointer iteration, and fixed buffers. It reads data directly out of the raw byte array without creating copies. 
 
-### 📉 SMART CHANGE DETECTION (Efficiency)
-Modern P1 meters (DSMR 5.0) blast data every second. Sending 20+ MQTT messages every second is a massive waste of WiFi juice and CPU cycles. 
-**v1.2.0** caches the last value of every single sensor. It only hits the radio if the value moves or if the 20s "heartbeat" timer hits. Your Home Assistant gets instant updates on power spikes, but stays quiet when nothing is happening. 🤫
+---
 
-... (rest of sections unchanged) ...
+## 🔌 CONNECTING TO THE P1 METER
+
+Connect the esp8266 to an RJ11 cable/connector following the diagram.
+
+**Note:** when using a 4-pin RJ11 connector (instead of a 6-pin connector), pin 1 and 6 are the pins that are not present, so the first pin is pin 2 and the last pin is pin 5
+
+| P1 pin | ESP8266 Pin |
+| :--- | :--- |
+| 2 - RTS | 3.3v |
+| 3 - GND | GND |
+| 4 - | |
+| 5 - RXD (data) | RX (gpio3) |
+
+On most Landys and Gyr models a 10K resistor should be used between the ESP's 3.3v and the p1's DATA (RXD) pin. Many howto's mention RTS requires 5V (VIN) to activate the P1 port, but for me 3V3 suffices.
+
+### Standard Wiring:
+![Standard Wiring](assets/esp8266_p1meter_bb.png)
+
+#### Optional: Powering the esp8266 using your DSMR5+ meter
+
+When using a 6 pin cable you can use the power source provided by the meter.
+
+| P1 pin | ESP8266 Pin |
+| :--- | :--- |
+| 1 - 5v out | 5v or Vin |
+| 2 - RTS | 3.3v |
+| 3 - GND | GND |
+| 4 - | |
+| 5 - RXD (data) | RX (gpio3) |
+| 6 - GND | GND |
+
+### Powered by Meter Wiring:
+![Powered by Meter](assets/esp8266_p1meter_bb_PoweredByMeter.png)
+
+---
+
+## 📡 MQTT TOPICS & METRICS
+
+**Core Topics:**
+| Topic | Description |
+| :--- | :--- |
+| `sensors/power/p1meter/actual_consumption` | Instant W usage |
+| `sensors/power/p1meter/l1_instant_power_usage` | L1, L2, L3 Usage (W) |
+| `sensors/power/p1meter/l1_voltage` | L1, L2, L3 Voltage (V) |
+| `sensors/power/p1meter/frequency` | Line Frequency (Hz) |
+| `sensors/power/p1meter/gas_meter_m3` | Gas Meter (m³) |
+| `sensors/power/p1meter/last_reset` | Post-mortem crash report |
+| `hass/status` | Online/Offline status with Version ID |
+
+---
+
+## 🎮 INSTALLATION
+
+### Option 1: PlatformIO (Recommended)
+1. Open the project folder in **VS Code** with the **PlatformIO** extension.
+2. Edit `esp8266_p1meter/settings.h` for your specific needs.
+3. Click **Upload**. PlatformIO will automatically download all required libraries and flash the board.
+
+### Option 2: Arduino IDE
+1. Open `esp8266_p1meter/esp8266_p1meter.ino` in the Arduino IDE.
+2. Go to **Sketch > Include Library > Manage Libraries...** and install:
+   - `WiFiManager` by tzapu (v2.0+)
+   - `PubSubClient` by Nick O'Leary
+   - `DoubleResetDetector` by Stephen Denne
+   - `ArduinoJson` by Benoit Blanchon (v7.0+)
+   - `ESPAsyncTCP` by me-no-dev
+   - `ESP Async WebServer` by me-no-dev
+   - `AsyncElegantOTA` by Ayush Sharma (**v2.2.8**)
+3. Edit `settings.h`, connect your board, and click **Upload**.
+
+---
 
 ### 📜 VERSION HISTORY
+- **v1.4.1** - 2026-03-22: Enhanced Serial Debugging. Added raw P1 line printing and increased serial timeout to 500ms.
 - **v1.4.0** - 2026-03-22: Non-blocking Async WebServer & ElegantOTA integration. OTA available 24/7 at `/update`.
 - **v1.3.4** - 2026-03-22: Hotfix - Resolved reporting deadlock and added CRC debug logs.
-- **v1.3.1** - 2026-03-22: Industrial Hardening. Implemented the **Sanity Shield** (spike protection), **Gated Availability** (boot verification), and **RTC Persistent State Tracking**.
+- **v1.3.1** - 2026-03-22: Industrial Hardening (Sanity Shield, RTC Persistence).
 - **v1.3.0** - 2026-03-22: Precision hardening and European locale support.
 - **v1.2.6** - 2026-03-21: Implemented Dynamic HA Discovery.
 - **v1.1.0** - Buffer overflow fixes and Crash milestones.
@@ -56,6 +125,6 @@ Modern P1 meters (DSMR 5.0) blast data every second. Sending 20+ MQTT messages e
 ---
 
 ### ❤️ CREDITS
-A huge thank you to [Daniel Jong](https://github.com/daniel-jong) for the original implementation and the foundation of this project.
+A huge thank you to [Daniel Jong](https://github.com/daniel-jong) for the original implementation.
 
 **"Stay static, stay stable."** ✌️💀
