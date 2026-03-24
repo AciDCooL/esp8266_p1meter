@@ -1,9 +1,9 @@
 /* 
- * ESP8266 P1 Meter - v1.5.4
+ * ESP8266 P1 Meter - v1.5.7
  * Re-engineered for maximum stability, zero heap fragmentation, 
  * and native Home Assistant Auto-Discovery.
  */
-#define VERSION "1.5.4"
+#define VERSION "1.5.7"
 
 // * Libraries
 #include <EEPROM.h>
@@ -26,7 +26,8 @@ void publish_ha_discovery();
 void mark_seen(const char* id);
 bool mqtt_reconnect();
 void send_mqtt_json(const char *topic, JsonDocument& doc);
-void send_metric(const char* name, long metric, long& last_value, int divisor = 1);
+void send_metric(const char* name, long metric, long& last_value);
+void send_metric_scaled(const char* name, long metric, long& last_value);
 void send_data_to_broker();
 bool decode_telegram(int len);
 void processLine(int len);
@@ -84,15 +85,10 @@ void update_rtc_totals() {
 }
 
 bool is_data_sane(long current, long last, long max_delta, const char* label) {
-    // If metric is 0 (hasn't arrived yet, or no return power), bypass check to prevent deadlock
     if (current <= 0) return true;
-    
-    // If RTC has no history for this metric, accept to seed it
     if (last <= 0 || rtc_persistent.marker != RTC_MARKER) return true; 
-    
     long delta = current - last;
     if (delta >= 0 && delta < max_delta) return true;
-    
     Serial.printf("SANITY FAIL [%s]: Current=%ld, Last=%ld, Delta=%ld (Max=%ld)\n", label, current, last, delta, max_delta);
     return false;
 }
@@ -238,7 +234,7 @@ long LAST_TARIF = -1, LAST_S_OUT = -1, LAST_L_OUT = -1, LAST_S_DROP = -1, LAST_S
 long LAST_AVG_15M = -1, LAST_MAX_15M = -1, LAST_AVG_13MO = -1, LAST_FREQ = -1;
 unsigned long LAST_HEARTBEAT = 0;
 
-void send_metric(const char* name, long metric, long& last_value, int divisor) {
+void send_metric(const char* name, long metric, long& last_value) {
     bool seen = false;
     for (size_t i = 0; i < SENSOR_COUNT; i++) {
         if (strcmp(sensors[i].id, name) == 0) { if (!seen_metrics[i]) return; seen = true; break; }
@@ -247,14 +243,30 @@ void send_metric(const char* name, long metric, long& last_value, int divisor) {
     if (metric != last_value || (millis() - LAST_HEARTBEAT > 20000)) {
         char topic[128], payload[32];
         snprintf(topic, sizeof(topic), "%s/%s", MQTT_ROOT_TOPIC, name);
-        if (divisor == 1) ltoa(metric, payload, 10);
-        else dtostrf(metric / (float)divisor, 1, 3, payload);
+        ltoa(metric, payload, 10);
         if (mqtt_client.publish(topic, payload, false)) last_value = metric;
         
-        // Feed the WDT and flush TCP window to prevent crash during the initial massive burst
-        mqtt_client.loop(); 
-        yield(); 
-        delay(10); 
+        mqtt_client.loop(); yield(); delay(10); 
+    }
+}
+
+// High-precision non-blocking metric sender (insert dot manually)
+void send_metric_scaled(const char* name, long metric, long& last_value) {
+    bool seen = false;
+    for (size_t i = 0; i < SENSOR_COUNT; i++) {
+        if (strcmp(sensors[i].id, name) == 0) { if (!seen_metrics[i]) return; seen = true; break; }
+    }
+    if (!seen) return;
+    if (metric != last_value || (millis() - LAST_HEARTBEAT > 20000)) {
+        char topic[128], payload[32];
+        snprintf(topic, sizeof(topic), "%s/%s", MQTT_ROOT_TOPIC, name);
+        
+        long integer_part = metric / 1000;
+        int fractional_part = abs(metric % 1000);
+        snprintf(payload, sizeof(payload), "%ld.%03d", integer_part, fractional_part);
+        
+        if (mqtt_client.publish(topic, payload, false)) last_value = metric;
+        mqtt_client.loop(); yield(); delay(10); 
     }
 }
 
@@ -290,14 +302,14 @@ void send_data_to_broker() {
     send_metric("l1_instant_power_returndelivery", L1_INSTANT_POWER_RETURNDELIVERY, LAST_L1_R);
     send_metric("l2_instant_power_returndelivery", L2_INSTANT_POWER_RETURNDELIVERY, LAST_L2_R);
     send_metric("l3_instant_power_returndelivery", L3_INSTANT_POWER_RETURNDELIVERY, LAST_L3_R);
-    send_metric("l1_instant_power_current", L1_INSTANT_POWER_CURRENT, LAST_L1_C, 1000);
-    send_metric("l2_instant_power_current", L2_INSTANT_POWER_CURRENT, LAST_L2_C, 1000);
-    send_metric("l3_instant_power_current", L3_INSTANT_POWER_CURRENT, LAST_L3_C, 1000);
-    send_metric("l1_voltage", L1_VOLTAGE, LAST_L1_V, 1000);
-    send_metric("l2_voltage", L2_VOLTAGE, LAST_L2_V, 1000);
-    send_metric("l3_voltage", L3_VOLTAGE, LAST_L3_V, 1000);
-    send_metric("frequency", FREQUENCY, LAST_FREQ, 1000);
-    send_metric("gas_meter_m3", GAS_METER_M3, LAST_GAS, 1000);
+    send_metric_scaled("l1_instant_power_current", L1_INSTANT_POWER_CURRENT, LAST_L1_C);
+    send_metric_scaled("l2_instant_power_current", L2_INSTANT_POWER_CURRENT, LAST_L2_C);
+    send_metric_scaled("l3_instant_power_current", L3_INSTANT_POWER_CURRENT, LAST_L3_C);
+    send_metric_scaled("l1_voltage", L1_VOLTAGE, LAST_L1_V);
+    send_metric_scaled("l2_voltage", L2_VOLTAGE, LAST_L2_V);
+    send_metric_scaled("l3_voltage", L3_VOLTAGE, LAST_L3_V);
+    send_metric_scaled("frequency", FREQUENCY, LAST_FREQ);
+    send_metric_scaled("gas_meter_m3", GAS_METER_M3, LAST_GAS);
     send_metric("actual_tarif_group", ACTUAL_TARIF, LAST_TARIF);
     send_metric("short_power_outages", SHORT_POWER_OUTAGES, LAST_S_OUT);
     send_metric("long_power_outages", LONG_POWER_OUTAGES, LAST_L_OUT);
@@ -345,7 +357,10 @@ long getValue(const char *buffer, int maxlen, char startchar, char endchar) {
     char res[16]; memset(res, 0, sizeof(res));
     if (strncpy(res, buffer + s + 1, l)) {
         for(int i=0; i<l; i++) if(res[i] == ',') res[i] = '.';
-        if (isNumber(res, l)) { if (endchar == '*') return (1000 * atof(res)); return atof(res); }
+        if (isNumber(res, l)) { 
+            if (endchar == '*') return (long)(atof(res) * 1000.0);
+            return (long)atof(res);
+        }
     }
     return 0;
 }

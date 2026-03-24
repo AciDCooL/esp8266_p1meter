@@ -4,7 +4,7 @@
  | |___ ___) |  __/| (_)  (_) || (_) |  |  __/| |    | |  | | |___  | | | |___|  _ < 
  |_____|____/|_|    \___/\___/ \___/   |_|   |_|    |_|  |_|_____| |_| |_____|_| \_\
 
-# ⚡ ESP8266 P1-METER ⚡ [v1.5.5 - 2026 EDITION]
+# ⚡ ESP8266 P1-METER ⚡ [v1.5.7 - 2026 EDITION]
 
 ![WebUI Preview](assets/webui_preview.svg)
 
@@ -141,8 +141,9 @@ For security and performance, the WebUI **shuts down** once the meter connects t
 ---
 
 ### 📜 VERSION HISTORY
-- **v1.5.5** - 2026-03-22: Architectural float precision fix. Separated the integer parsing logic (used for Watts/Power) from the float parsing logic (used for Voltage, Current, Gas) to preserve exact native values from the meter and prevent artificial truncation.
-- **v1.5.4** - 2026-03-22: Fixed an ElegantOTA UI bug where the browser would display "Upload Failed" because the manual `ESP.restart()` executed before the HTTP success response could be sent.
+- **v1.5.7** - 2026-03-22: "Industrial Scaled Integer" Precision Patch. Replaced slow floating-point math with high-speed integer scaling (x1000). Values like Voltage and Gas now use manual decimal insertion for 100% precision without the CPU overhead that caused stabilization locks.
+- **v1.5.5** - 2026-03-22: Architectural float precision fix. (Superseded by v1.5.7).
+- **v1.5.4** - 2026-03-22: Fixed an ElegantOTA UI bug where the browser would display "Upload Failed".
 - **v1.5.3** - 2026-03-22: Smart Garbage Collection. The serial parser now waits for a clean start byte (`/`) on boot/reconnect to prevent processing fragmented packets. Improved LWT state handling.
 - **v1.5.2** - 2026-03-22: Hotfix - Added `yield()` and `mqtt_client.loop()` to metric publishing to prevent TCP buffer exhaustion and Hardware Watchdog crashes during the massive initial MQTT burst.
 - **v1.5.1** - 2026-03-22: Added OTA Password field to the WiFiManager WebUI. The ElegantOTA `/update` portal now dynamically uses this password.
