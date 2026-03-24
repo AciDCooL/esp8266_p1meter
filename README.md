@@ -1,11 +1,10 @@
-  ______  _____ _____   ___ ___   __   __   ___  __   __ ___ _____ ___ ___ 
- |  ____|/ ____|  __ \ / _ \__ \ / /  /_ | |__ \/_ | / /|__ \____ |__ \__ \
- | |__  | (___ | |__) | (_) | ) / /_   | |    ) || |/ /_   ) |  / /  ) | ) |
- |  __|  \___ \|  ___/ \__, |/ / '_ \  | |   / / | | '_ \ / /  / /  / / / / 
- | |____ ____) | |       / /|_| (_) |  | |  / /_ | | (_) / /_ / /  / /_|_| 
- |______|_____/|_|      /_/(_) \___/   |_| |____||_|\___/____/_/  |____(_)
-                                                                           
-# ⚡ ESP8266 P1-METER ⚡ [v1.3.1 - 2026 EDITION]
+  _____ ____  ____   ___  ____   __      ____  _      __  __ _____ _____ _____ ____  
+ | ____/ ___||  _ \ ( _ )(  _ \ / /_    |  _ \/ |    |  \/  | ____|_   _| ____|  _ \ 
+ |  _| \___ \| |_) |/ _ \/ _ \ | '_ \   | |_) | |    | |\/| |  _|   | | |  _| | |_) |
+ | |___ ___) |  __/| (_)  (_) || (_) |  |  __/| |    | |  | | |___  | | | |___|  _ < 
+ |_____|____/|_|    \___/\___/ \___/   |_|   |_|    |_|  |_|_____| |_| |_____|_| \_\
+
+# ⚡ ESP8266 P1-METER ⚡ [v1.3.2 - 2026 EDITION]
 
 ![WebUI Preview](assets/webui_preview.svg)
 
@@ -15,7 +14,7 @@ This is a high-performance, ultra-stable P1 Meter firmware for the **Wemos D1 Mi
 
 ---
 
-## 🚀 WHAT'S NEW IN v1.3.1 (THE "INDUSTRIAL" PATCH)
+## 🚀 WHAT'S NEW IN v1.3.2 (THE "INDUSTRIAL" PATCH)
 
 We went through the code with a fine-toothed comb to ensure this thing runs for months without a stutter. 
 
@@ -29,8 +28,8 @@ We went through the code with a fine-toothed comb to ensure this thing runs for 
     *   **Branding:** Customizable Manufacturer, Model, and Friendly Name hardcoded in `settings.h`.
     *   **Native Energy Dashboard:** Fully tagged with the correct `state_class` and `device_class` to work out-of-the-box with HA's built-in Energy tracking.
     *   **LWT (Last Will & Testament):** If it loses power, Home Assistant immediately marks all sensors as "Unavailable".
-*   **🕵️ SMART CHANGE DETECTION:** Only sends MQTT data if the value actually changes (with a 20s heartbeat).
-*   **🛡️ STACK SAFETY:** Moved large MQTT buffers to static memory. 
+*   **🕵️ SMART CHANGE DETECTION:** Only sends MQTT data if the value actually changes (with a 20s heartbeat). Saves your WiFi and your MQTT broker from unnecessary noise.
+*   **🛡️ STACK SAFETY:** Moved large MQTT buffers to static memory. Say goodbye to Stack Overflows.
 *   **💾 CRASH REPORTING:** If it reboots, it tells you *why* over MQTT (`/last_reset`). Milestone tracking pinpointing exactly where it failed.
 *   **😎 HACKER WEB-UI:** The WiFi config portal has been upgraded with a lean, neon-green "terminal" aesthetic. Fully mobile-responsive and state-aware.
 *   **🧱 BUFFER & EEPROM HARDENING:** Fixed the infamous `telegram` array overflow that was wiping WiFi settings, and added a read-before-write check to massively extend EEPROM lifespan.
@@ -41,7 +40,7 @@ We went through the code with a fine-toothed comb to ensure this thing runs for 
 
 ### 🛡️ THE "ANTI-FRAG" ENGINE (Heap Protection)
 The original code used `std::string`, `String`, and vectors for parsing. On an ESP8266, this is a death sentence. Every time you create a `String`, it allocates RAM. 
-**v1.3.1** uses `snprintf`, direct `char*` pointer iteration, and fixed buffers. It reads data directly out of the raw byte array without creating copies. 
+**v1.2.5** uses `snprintf`, direct `char*` pointer iteration, and fixed buffers. It reads data directly out of the raw byte array without creating copies. 
 
 ### 📉 SMART CHANGE DETECTION (Efficiency)
 Modern P1 meters (DSMR 5.0) blast data every second. Sending 20+ MQTT messages every second is a massive waste of WiFi juice and CPU cycles. 
@@ -105,6 +104,8 @@ Your automations stay the same. We kept the legacy structure but made it faster 
 | `sensors/power/p1meter/last_reset` | Post-mortem crash report |
 | `hass/status` | Online/Offline status with Version ID |
 
+*(Note: Enabling Home Assistant Auto-Discovery does **not** change these topics. It just maps them for HA automatically).*
+
 ---
 
 ## 🎮 INSTALLATION
@@ -140,6 +141,7 @@ For security and performance, the WebUI **shuts down** once the meter connects t
 ---
 
 ### 📜 VERSION HISTORY
+- **v1.3.2** - 2026-03-22: Final version sync and documentation cleanup.
 - **v1.3.1** - 2026-03-22: Industrial Hardening. Implemented the **Sanity Shield** (spike protection), **Gated Availability** (boot verification), and **RTC Persistent State Tracking** (state survives soft reboots).
 - **v1.3.0** - 2026-03-22: Precision hardening. Added European locale support (comma separator fix) and initialized all metrics to 0 to prevent junk data on boot.
 - **v1.2.9** - 2026-03-22: feat: unique hardware IDs for HA, remove config_url.
