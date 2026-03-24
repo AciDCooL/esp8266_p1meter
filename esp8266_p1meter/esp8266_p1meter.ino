@@ -1,9 +1,9 @@
 /* 
- * ESP8266 P1 Meter - v1.5.1
+ * ESP8266 P1 Meter - v1.5.2
  * Re-engineered for maximum stability, zero heap fragmentation, 
  * and native Home Assistant Auto-Discovery.
  */
-#define VERSION "1.5.1"
+#define VERSION "1.5.2"
 
 // * Libraries
 #include <EEPROM.h>
@@ -216,6 +216,9 @@ void send_mqtt_json(const char *topic, JsonDocument& doc) {
     size_t n = serializeJson(doc, buffer, sizeof(buffer));
     mqtt_client.publish(topic, (uint8_t*)buffer, n);
     doc.clear();
+    mqtt_client.loop(); 
+    yield(); 
+    delay(10);
 }
 
 long LAST_CON_LOW = -1, LAST_CON_HIGH = -1, LAST_RET_LOW = -1, LAST_RET_HIGH = -1;
@@ -238,6 +241,11 @@ void send_metric(const char* name, long metric, long& last_value, int divisor) {
         if (divisor == 1) ltoa(metric, payload, 10);
         else dtostrf(metric / (float)divisor, 1, 3, payload);
         if (mqtt_client.publish(topic, payload, false)) last_value = metric;
+        
+        // Feed the WDT and flush TCP window to prevent crash during the initial massive burst
+        mqtt_client.loop(); 
+        yield(); 
+        delay(10); 
     }
 }
 
