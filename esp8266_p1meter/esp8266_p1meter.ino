@@ -1,9 +1,10 @@
 /* 
- * ESP8266 P1 Meter - v1.4.1
+ * ESP8266 P1 Meter - v1.4.2
  * Re-engineered for maximum stability, zero heap fragmentation, 
  * and native Home Assistant Auto-Discovery.
+ * Includes Non-Blocking Async WebUI for OTA Updates via ElegantOTA.
  */
-#define VERSION "1.4.1"
+#define VERSION "1.4.2"
 
 #include <EEPROM.h>
 #include <DNSServer.h>
@@ -14,7 +15,7 @@
 #include <WiFiUdp.h>
 #include <ESPAsyncTCP.h>
 #include <ESPAsyncWebServer.h>
-#include <AsyncElegantOTA.h>
+#include <ElegantOTA.h>
 #include <PubSubClient.h>
 #include <DoubleResetDetector.h>
 #include <ArduinoJson.h>
@@ -571,7 +572,7 @@ void setup() {
     setup_mdns();
     
     // Async Web Server & ElegantOTA
-    AsyncElegantOTA.begin(&server);
+    ElegantOTA.begin(&server);
     server.begin();
     Serial.println(F("Async Web Server & OTA ready."));
 

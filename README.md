@@ -4,7 +4,7 @@
  | |___ ___) |  __/| (_)  (_) || (_) |  |  __/| |    | |  | | |___  | | | |___|  _ < 
  |_____|____/|_|    \___/\___/ \___/   |_|   |_|    |_|  |_|_____| |_| |_____|_| \_\
 
-# ⚡ ESP8266 P1-METER ⚡ [v1.4.1 - 2026 EDITION]
+# ⚡ ESP8266 P1-METER ⚡ [v1.4.2 - 2026 EDITION]
 
 ![WebUI Preview](assets/webui_preview.svg)
 
@@ -14,11 +14,11 @@ This is a high-performance, ultra-stable P1 Meter firmware for the **Wemos D1 Mi
 
 ---
 
-## 🚀 WHAT'S NEW IN v1.4.1 (THE "DEBUG" PATCH)
+## 🚀 WHAT'S NEW IN v1.4.2 (THE "OTA" PATCH)
 
 We went through the code with a fine-toothed comb to ensure this thing runs for months without a stutter. 
 
-*   **🌐 NON-BLOCKING WEB-UI (v1.4.0):** The web server is now **Asynchronous**. It runs 24/7 without slowing down the P1 meter parsing. You can now perform browser-based OTA updates at `/update` anytime!
+*   **🌐 NON-BLOCKING WEB-UI (v1.4.0):** The web server is now **Asynchronous**. It runs 24/7 without slowing down the P1 meter parsing. You can now perform browser-based OTA updates at `/update` anytime via **ElegantOTA**!
 *   **🛡️ THE SANITY SHIELD (v1.3.1):** Every P1 telegram is now validated against physically impossible spikes. If a reading jumps more than 10kWh in 1 second, it is automatically discarded. No more vertical spikes in your HA Energy Dashboard!
 *   **💾 RTC STATE AWARENESS (v1.3.1):** Critical totals are stored in **RTC User Memory** (SRAM). It survives soft-reboots and OTA updates without wearing out the Flash memory.
 *   **⚡ 1s REAL-TIME UPDATES:** Polling interval reduced from 30s to 1s. Catch those power spikes as they happen.
@@ -107,12 +107,13 @@ When using a 6 pin cable you can use the power source provided by the meter.
    - `ArduinoJson` by Benoit Blanchon (v7.0+)
    - `ESPAsyncTCP` by me-no-dev
    - `ESP Async WebServer` by me-no-dev
-   - `AsyncElegantOTA` by Ayush Sharma (**v2.2.8**)
+   - `ElegantOTA` by Ayush Sharma (**v3.1.0+**)
 3. Edit `settings.h`, connect your board, and click **Upload**.
 
 ---
 
 ### 📜 VERSION HISTORY
+- **v1.4.2** - 2026-03-22: Migrated to latest **ElegantOTA v3** (replaces deprecated AsyncElegantOTA).
 - **v1.4.1** - 2026-03-22: Enhanced Serial Debugging. Added raw P1 line printing and increased serial timeout to 500ms.
 - **v1.4.0** - 2026-03-22: Non-blocking Async WebServer & ElegantOTA integration. OTA available 24/7 at `/update`.
 - **v1.3.4** - 2026-03-22: Hotfix - Resolved reporting deadlock and added CRC debug logs.
