@@ -1,26 +1,17 @@
 /* 
- * ESP8266 P1 Meter - v1.4.5
+ * ESP8266 P1 Meter - v1.4.6
  * Re-engineered for maximum stability, zero heap fragmentation, 
  * and native Home Assistant Auto-Discovery.
- * Includes Non-Blocking Async WebUI for OTA Updates via ElegantOTA.
  */
-#define VERSION "1.4.5"
+#define VERSION "1.4.6"
 
 // * Libraries
 #include <EEPROM.h>
 #include <DNSServer.h>
 #include <ESP8266WiFi.h>
 #include <Ticker.h>
-
-// Pre-processor guards to prevent ESPAsyncWebServer vs ESP8266WebServer conflicts
-// This is required because WiFiManager includes the old synchronous WebServer.
-#define WEBSERVER_H
-#include <ESPAsyncTCP.h>
-#include <ESPAsyncWebServer.h>
-
-#define ELEGANTOTA_USE_ASYNC_WEBSERVER 1
+#include <ESP8266WebServer.h>
 #include <ElegantOTA.h>
-
 #include <WiFiManager.h>
 #include <ESP8266mDNS.h>
 #include <WiFiUdp.h>
@@ -54,7 +45,7 @@ DoubleResetDetector drd(DRD_TIMEOUT, DRD_ADDRESS);
 Ticker ticker;
 WiFiClient espClient;
 PubSubClient mqtt_client(espClient);
-AsyncWebServer server(80);
+ESP8266WebServer server(80);
 
 // * Reset and Milestone tracking
 struct {
