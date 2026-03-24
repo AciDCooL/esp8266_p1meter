@@ -4,7 +4,7 @@
  | |___ ___) |  __/| (_)  (_) || (_) |  |  __/| |    | |  | | |___  | | | |___|  _ < 
  |_____|____/|_|    \___/\___/ \___/   |_|   |_|    |_|  |_|_____| |_| |_____|_| \_\
 
-# ⚡ ESP8266 P1-METER ⚡ [v1.4.9 - 2026 EDITION]
+# ⚡ ESP8266 P1-METER ⚡ [v1.5.0 - 2026 EDITION]
 
 ![WebUI Preview](assets/webui_preview.svg)
 
@@ -145,6 +145,7 @@ For security and performance, the WebUI **shuts down** once the meter connects t
 ---
 
 ### 📜 VERSION HISTORY
+- **v1.5.0** - 2026-03-22: Implemented ElegantOTA security tweaks. Added HTTP Basic Auth (`admin`), paused P1 parsing during updates to prevent buffer crashes, and added a graceful MQTT disconnect on successful firmware upload.
 - **v1.4.9** - 2026-03-22: Increased the Hardware Serial RX buffer to 2048 bytes to prevent P1 telegram corruption and CRC failures during WebUI/MQTT blocking events.
 - **v1.4.8** - 2026-03-22: Added an automatic HTTP redirect from the root path (`/`) to the OTA update page (`/update`) to prevent 404 errors.
 - **v1.4.7** - 2026-03-22: Hotfix - Re-added `server.handleClient()` to restore the WebUI and fixed the Sanity Shield deadlock on zero-value metrics.

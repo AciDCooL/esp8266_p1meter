@@ -1,9 +1,9 @@
 /* 
- * ESP8266 P1 Meter - v1.4.9
+ * ESP8266 P1 Meter - v1.5.0
  * Re-engineered for maximum stability, zero heap fragmentation, 
  * and native Home Assistant Auto-Discovery.
  */
-#define VERSION "1.4.9"
+#define VERSION "1.5.0"
 
 // * Libraries
 #include <EEPROM.h>
@@ -63,6 +63,7 @@ struct {
 
 bool system_verified = false;
 int valid_telegram_count = 0;
+bool ota_in_progress = false;
 #define STABILIZATION_THRESHOLD 3
 #define MAX_ENERGY_DELTA 10000 // Max 10kWh jump in 1s
 
@@ -434,6 +435,8 @@ void processLine(int len) {
 }
 
 void read_p1_hardwareserial() {
+    if (ota_in_progress) return; // Block serial parsing during OTA to prevent interruptions
+
     static int pos = 0;
     // Burst read to prevent hardware buffer overflow
     while (Serial.available()) {
@@ -525,7 +528,32 @@ void setup() {
     }
     ticker.detach(); digitalWrite(LED_BUILTIN, LOW);
     setup_mdns();
+    
     ElegantOTA.begin(&server);
+    ElegantOTA.setAuth("admin", OTA_PASSWORD); // Security
+    
+    ElegantOTA.onStart([]() {
+        Serial.println("OTA Update Starting. Pausing P1 Serial Parser.");
+        ota_in_progress = true; // Stop parsing to free up CPU
+    });
+
+    ElegantOTA.onEnd([](bool success) {
+        if (success) {
+            Serial.println("OTA Update Successful! Gracefully closing connections...");
+            if (mqtt_client.connected()) {
+                char status_topic[128]; snprintf(status_topic, sizeof(status_topic), "%s/status", MQTT_ROOT_TOPIC);
+                mqtt_client.publish(status_topic, "offline", true); // Send LWT manually
+                mqtt_client.disconnect();
+            }
+            update_rtc_totals(); // Save final state
+            delay(500); // Give MQTT time to flush
+            ESP.restart(); // Manual reboot
+        } else {
+            Serial.println("OTA Update Failed. Resuming normal operations.");
+            ota_in_progress = false;
+        }
+    });
+
     server.on("/", []() {
         server.sendHeader("Location", "/update");
         server.send(302, "text/plain", "");
