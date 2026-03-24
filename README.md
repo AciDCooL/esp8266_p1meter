@@ -14,159 +14,114 @@ This is a high-performance, ultra-stable P1 Meter firmware for the **Wemos D1 Mi
 
 ---
 
-## 🚀 WHAT'S NEW IN v1.5.5 (THE "PRO" PATCH)
+## 🚀 WHAT'S NEW IN v1.5.7 (THE "INDUSTRIAL" PATCH)
 
 We went through the code with a fine-toothed comb to ensure this thing runs for months without a stutter. 
 
-*   **⚡ ZERO-BLOCKING SERIAL (v1.5.3):** Completely refactored the P1 serial reading logic. It no longer uses blocking timeouts, and features **Smart Garbage Collection** to instantly discard fragmented packets. The loop remains fast even during heavy P1 bursts.
-*   **🌐 24/7 OTA WEB-UI:** The update portal at `/update` is now always online, powered by **ElegantOTA v3**. It runs in the background and will never disrupt your P1 data flow.
-*   **🔒 OTA SECURITY (v1.5.1):** The OTA portal is now protected by HTTP Basic Auth. You can dynamically set your custom OTA password in the main WiFiManager configuration portal.
-*   **🎯 NATIVE FLOAT PRECISION (v1.5.5):** Architectural fix for metric accuracy. Power metrics are still efficiently converted to Integers (Watts) for the HA Energy Dashboard, but Telemetry metrics (Voltage, Current, Gas) are now natively parsed and transmitted as high-precision floats, preventing artificial truncation.
-*   **🛡️ THE SANITY SHIELD (v1.3.1):** Every P1 telegram is now validated against physically impossible spikes. If a reading jumps more than 10kWh in 1 second, it is automatically discarded. No more vertical spikes in your HA Energy Dashboard!
-*   **💾 RTC STATE AWARENESS (v1.3.1):** Critical totals are stored in **RTC User Memory** (SRAM). It survives soft-reboots and OTA updates without wearing out the Flash memory.
-*   **🧠 HEAP PROTECTION (Anti-Frag Engine):** Scrubbed all `String` and `std::vector` objects from the transmission loop. We parse the datagram entirely in-place. Zero allocations = zero memory "Swiss cheese" fragmentation = infinite uptime.
+*   **⚡ ZERO-BLOCKING SERIAL (v1.5.3):** Completely refactored the P1 serial reading logic into a background state machine. Features **Smart Garbage Collection** to instantly discard fragmented packets. The loop remains fluid even during 115200 baud bursts.
+*   **🌐 24/7 OTA WEB-UI:** The update portal at `/update` is now always online, powered by **ElegantOTA v3**. It runs alongside the P1 loop without disrupting real-time data flow.
+*   **🔒 OTA SECURITY (v1.5.1):** The OTA portal is protected by HTTP Basic Auth (`admin`). You can dynamically set your custom password in the main configuration portal.
+*   **🎯 INDUSTRIAL PRECISION (v1.5.7):** Architectural overhaul for metric accuracy. Replaced slow software floating-point math with high-speed **Scaled Integers (x1000)**. Voltage, Current, and Gas are natively preserved with 100% precision without the CPU overhead that caused stabilization locks in earlier versions.
+*   **🛡️ THE SANITY SHIELD (v1.3.1):** Every telegram is validated against physically impossible spikes. If a reading jumps more than 10kWh in 1s, it's discarded to protect your HA Energy Dashboard.
+*   **💾 RTC STATE AWARENESS (v1.3.1):** Critical totals are stored in **RTC User Memory** (SRAM). Survives soft-reboots and updates without wearing out Flash memory.
+*   **🧠 HEAP PROTECTION (Anti-Frag Engine):** Total eradication of `String` and `std::vector` from the main loop. Zero allocations = zero memory fragmentation = infinite uptime.
 *   **🏠 PRO HOME ASSISTANT INTEGRATION:** 
-    *   **Dynamic Discovery:** ESP now "listens" to see which sensors your meter actually provides before registering them in HA.
-    *   **Native Energy Dashboard:** Fully tagged with the correct `state_class` and `device_class` to work out-of-the-box with HA's built-in Energy tracking.
-    *   **LWT (Last Will & Testament):** Instantly alerts HA if the device goes offline, and gracefully disconnects during OTA updates.
-*   **💾 CRASH REPORTING:** If it reboots, it tells you *why* over MQTT (`/last_reset`). Milestone tracking pinpointing exactly where it failed.
+    *   **Dynamic Discovery:** ESP "listens" to your meter to only register sensors that actually exist.
+    *   **Native Energy Dashboard:** Fully tagged with `state_class` and `device_class` for instant HA Energy support.
+    *   **LWT (Last Will & Testament):** Instantly alerts HA if the device loses power or disconnects.
+*   **💾 CRASH REPORTING:** If it reboots, it tells you *why* over MQTT (`/last_reset`) with milestone tracking.
 
 ---
 
 ## 🧠 DEEP DIVE: ARCHITECTURAL IMPROVEMENTS
 
 ### 🛡️ THE "ANTI-FRAG" ENGINE (Heap Protection)
-The original code used `std::string`, `String`, and vectors for parsing. On an ESP8266, this is a death sentence. Every time you create a `String`, it allocates RAM. 
-**v1.4.0** uses `snprintf`, direct `char*` pointer iteration, and fixed buffers. It reads data directly out of the raw byte array without creating copies. 
+The original code used `std::string`, `String`, and vectors for parsing. On an ESP8266, this causes "Swiss cheese" heap fragmentation, leading to crashes. **v1.5.0+** uses `snprintf`, fixed buffers, and direct pointer iteration. 
+
+### 🎯 SCALED INTEGER ARCHITECTURE (Precision vs Speed)
+The ESP8266 lacks a hardware Floating Point Unit (FPU). Software float math is slow and can cause the serial buffer to overflow at 115200 baud. 
+**v1.5.7** stores all telemetry (Voltage, Current, Gas) as **Scaled Integers (x1000)**.
+- **Internal:** `230.1 V` is stored as `230100` (milliVolts).
+- **MQTT:** The decimal point is manually inserted (`230.100`) before transmission.
+This provides the precision of a float with the raw speed of integer math, ensuring zero serial data loss.
 
 ### 📉 SMART CHANGE DETECTION (Efficiency)
-Modern P1 meters (DSMR 5.0) blast data every second. Sending 20+ MQTT messages every second is a massive waste of WiFi juice and CPU cycles. 
-**v1.2.0** caches the last value of every single sensor. It only hits the radio if the value moves or if the 20s "heartbeat" timer hits. Your Home Assistant gets instant updates on power spikes, but stays quiet when nothing is happening. 🤫
-
-### 🧬 POST-MORTEM TELEMETRY (Crash Debugging)
-Ever wonder why your ESP just "stopped" responding? **v1.2.0** captures the `ResetReason` from the bootloader and the `Milestone` from RTC memory. 
-- **Milestones:** We track if it was `Booting`, `WiFi Connecting`, `Reading P1`, or `Sending MQTT` when it died. 
-- **MQTT Report:** On the next boot, it publishes the full autopsy report to `.../last_reset`.
+Caches the last value of every sensor. It only hits the radio if the value moves or if the 20s "heartbeat" timer hits, saving WiFi juice and broker noise. 🤫
 
 ---
 
 ## 🔌 CONNECTING TO THE P1 METER
 
-Connect the esp8266 to an RJ11 cable/connector following the diagram.
-
-**Note:** when using a 4-pin RJ11 connector (instead of a 6-pin connector), pin 1 and 6 are the pins that are not present, so the first pin is pin 2 and the last pin is pin 5
+Connect the esp8266 to an RJ11 cable following the diagram.
 
 | P1 pin | ESP8266 Pin |
 | :--- | :--- |
 | 2 - RTS | 3.3v |
 | 3 - GND | GND |
-| 4 - | |
 | 5 - RXD (data) | RX (gpio3) |
 
-On most Landys and Gyr models a 10K resistor should be used between the ESP's 3.3v and the p1's DATA (RXD) pin. Many howto's mention RTS requires 5V (VIN) to activate the P1 port, but for me 3V3 suffices.
-
-### Standard Wiring:
+#### Standard Wiring:
 ![Standard Wiring](assets/esp8266_p1meter_bb.png)
 
-#### Optional: Powering the esp8266 using your DSMR5+ meter
-
-When using a 6 pin cable you can use the power source provided by the meter.
-
+#### Optional: Powering using your DSMR5+ meter
 | P1 pin | ESP8266 Pin |
 | :--- | :--- |
 | 1 - 5v out | 5v or Vin |
 | 2 - RTS | 3.3v |
 | 3 - GND | GND |
-| 4 - | |
 | 5 - RXD (data) | RX (gpio3) |
 | 6 - GND | GND |
-
-### Powered by Meter Wiring:
-![Powered by Meter](assets/esp8266_p1meter_bb_PoweredByMeter.png)
 
 ---
 
 ## 📡 MQTT TOPICS & METRICS
 
-Your automations stay the same. We kept the legacy structure but made it faster and added missing 3-Phase metrics.
-
 **Core Topics:**
 | Topic | Description |
 | :--- | :--- |
 | `sensors/power/p1meter/actual_consumption` | Instant W usage |
-| `sensors/power/p1meter/l1_instant_power_usage` | L1, L2, L3 Usage (W) |
 | `sensors/power/p1meter/l1_voltage` | L1, L2, L3 Voltage (V) |
-| `sensors/power/p1meter/frequency` | Line Frequency (Hz) |
 | `sensors/power/p1meter/gas_meter_m3` | Gas Meter (m³) |
 | `sensors/power/p1meter/last_reset` | Post-mortem crash report |
-| `hass/status` | Online/Offline status with Version ID |
-
-*(Note: Enabling Home Assistant Auto-Discovery does **not** change these topics. It just maps them for HA automatically).*
+| `hass/status` | Online/Offline/Stabilizing status |
 
 ---
 
 ## 🎮 INSTALLATION
 
 ### Option 1: PlatformIO (Recommended)
-1. Open the project folder in **VS Code** with the **PlatformIO** extension.
-2. Edit `esp8266_p1meter/settings.h` for your specific needs (though defaults are now ⚡ cracked).
-3. Click **Upload**. PlatformIO will automatically download all required libraries and flash the board.
+1. Open in **VS Code** with the **PlatformIO** extension.
+2. Edit `esp8266_p1meter/settings.h`.
+3. Click **Upload**.
 
 ### Option 2: Arduino IDE
-1. Open `esp8266_p1meter/esp8266_p1meter.ino` in the Arduino IDE.
-2. Go to **Sketch > Include Library > Manage Libraries...** and install the following:
+1. Open `esp8266_p1meter/esp8266_p1meter.ino`.
+2. Install these libraries via Library Manager:
    - `WiFiManager` by tzapu (v2.0+)
    - `PubSubClient` by Nick O'Leary
    - `DoubleResetDetector` by Stephen Denne
    - `ArduinoJson` by Benoit Blanchon (v7.0+)
-   - `ESP Async WebServer` by me-no-dev
-   - `ESPAsyncTCP` by me-no-dev
    - `ElegantOTA` by Ayush Sharma (**v3.1.0+**)
-3. Edit `settings.h`, connect your board, and click **Upload**.
-
-### First Boot Setup
-1. Connect to the new `p1meter` WiFi Access Point.
-2. You'll be greeted by the neon Hacker UI.
-3. Feed it your WiFi and MQTT credentials.
-4. Check the **"Enable HA Auto-Discovery"** box if you use Home Assistant.
-5. Click Save. It will reboot and start streaming data!
-
-### 🔄 How to change settings later (Re-accessing the WebUI)
-For security and performance, the WebUI **shuts down** once the meter connects to your WiFi. If you ever need to change your MQTT broker IP or WiFi password, use the **Double Reset** method:
-1. Press the physical **RST (Reset) button** on your D1 Mini.
-2. Wait a second, then **press it again** (must be within 10 seconds of the first press).
-3. The internal LED will start flashing rapidly, indicating the settings have been wiped.
-4. The `p1meter` Access Point and WebUI will now be broadcasting again.
+3. Connect your board and click **Upload**.
 
 ---
 
 ### 📜 VERSION HISTORY
-- **v1.5.7** - 2026-03-22: "Industrial Scaled Integer" Precision Patch. Replaced slow floating-point math with high-speed integer scaling (x1000). Values like Voltage and Gas now use manual decimal insertion for 100% precision without the CPU overhead that caused stabilization locks.
-- **v1.5.5** - 2026-03-22: Architectural float precision fix. (Superseded by v1.5.7).
-- **v1.5.4** - 2026-03-22: Fixed an ElegantOTA UI bug where the browser would display "Upload Failed".
-- **v1.5.3** - 2026-03-22: Smart Garbage Collection. The serial parser now waits for a clean start byte (`/`) on boot/reconnect to prevent processing fragmented packets. Improved LWT state handling.
-- **v1.5.2** - 2026-03-22: Hotfix - Added `yield()` and `mqtt_client.loop()` to metric publishing to prevent TCP buffer exhaustion and Hardware Watchdog crashes during the massive initial MQTT burst.
-- **v1.5.1** - 2026-03-22: Added OTA Password field to the WiFiManager WebUI. The ElegantOTA `/update` portal now dynamically uses this password.
-- **v1.5.0** - 2026-03-22: Implemented ElegantOTA security tweaks. Added HTTP Basic Auth (`admin`), paused P1 parsing during updates to prevent buffer crashes, and added a graceful MQTT disconnect on successful firmware upload.
-- **v1.4.9** - 2026-03-22: Increased the Hardware Serial RX buffer to 2048 bytes to prevent P1 telegram corruption and CRC failures during WebUI/MQTT blocking events.
-- **v1.4.8** - 2026-03-22: Added an automatic HTTP redirect from the root path (`/`) to the OTA update page (`/update`) to prevent 404 errors.
-- **v1.4.7** - 2026-03-22: Hotfix - Re-added `server.handleClient()` to restore the WebUI and fixed the Sanity Shield deadlock on zero-value metrics.
-- **v1.4.6** - 2026-03-22: Reverted to Standard WebServer to fix `ESPAsyncWebServer` conflicts in Arduino IDE.
-- **v1.4.4** - 2026-03-22: Non-blocking Serial parsing refactor. P1 meter data flow is now completely independent of WebServer/MQTT timing.
-- **v1.4.3** - 2026-03-22: Hotfix - Resolved HTTP_GET conflict and AsyncWebServer conversion for Arduino IDE.
-- **v1.4.2** - 2026-03-22: Migrated to latest **ElegantOTA v3**.
-- **v1.4.1** - 2026-03-22: Enhanced Serial Debugging and increased serial timeout.
-- **v1.4.0** - 2026-03-22: Non-blocking Async WebServer & ElegantOTA integration. OTA available 24/7 at `/update`.
-- **v1.3.4** - 2026-03-22: Hotfix - Resolved reporting deadlock and added CRC debug logs.
+- **v1.5.7** - 2026-03-22: "Industrial Scaled Integer" Precision Patch. Replaced slow floating-point math with high-speed integer scaling (x1000). Values like Voltage and Gas now use manual decimal insertion for 100% precision. Removed top-level comments for a cleaner `.ino`.
+- **v1.5.4** - 2026-03-22: Fixed ElegantOTA UI "Upload Failed" bug and improved MQTT graceful disconnect.
+- **v1.5.3** - 2026-03-22: Smart Garbage Collection serial parser. Waits for clean start byte (`/`) to prevent fragmented packets.
+- **v1.5.1** - 2026-03-22: Added Dynamic OTA Password field to WebUI.
+- **v1.5.0** - 2026-03-22: Implemented ElegantOTA security tweaks and 24/7 background portal.
+- **v1.4.9** - 2026-03-22: Increased Hardware Serial RX buffer to 2048 bytes.
+- **v1.4.6** - 2026-03-22: Reverted to Standard WebServer for Arduino IDE compatibility.
+- **v1.4.4** - 2026-03-22: Non-blocking Serial parsing refactor.
 - **v1.3.1** - 2026-03-22: Industrial Hardening (Sanity Shield, RTC Persistence).
-- **v1.3.0** - 2026-03-22: Precision hardening and European locale support.
 - **v1.2.6** - 2026-03-21: Implemented Dynamic HA Discovery.
-- **v1.1.0** - Buffer overflow fixes and Crash milestones.
 - **v1.0.0** - The OG release.
 
 ---
 
 ### ❤️ CREDITS
-A huge thank you to [Daniel Jong](https://github.com/daniel-jong) for the original implementation and the foundation of this project. This 2026 edition builds upon his excellent work to provide even greater stability and native integration features.
+A huge thank you to [Daniel Jong](https://github.com/daniel-jong) for the original implementation.
 
 **"Stay static, stay stable."** ✌️💀
