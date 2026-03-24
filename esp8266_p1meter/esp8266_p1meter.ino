@@ -1,9 +1,9 @@
 /* 
- * ESP8266 P1 Meter - v1.5.2
+ * ESP8266 P1 Meter - v1.5.3
  * Re-engineered for maximum stability, zero heap fragmentation, 
  * and native Home Assistant Auto-Discovery.
  */
-#define VERSION "1.5.2"
+#define VERSION "1.5.3"
 
 // * Libraries
 #include <EEPROM.h>
@@ -196,15 +196,24 @@ bool mqtt_reconnect() {
     char status_topic[128], client_id[64];
     snprintf(status_topic, sizeof(status_topic), "%s/status", MQTT_ROOT_TOPIC);
     snprintf(client_id, sizeof(client_id), "%s-%06X", HOSTNAME, ESP.getChipId());
+    
+    // Connect with LWT set to "offline"
     if (mqtt_client.connect(client_id, MQTT_USER, MQTT_PASS, status_topic, 1, true, "offline")) {
-        mqtt_client.publish(status_topic, "stabilizing", true);
+        
+        // If we are already verified (just a WiFi hiccup), jump straight to online
+        if (system_verified) {
+            mqtt_client.publish(status_topic, "online", true);
+        } else {
+            mqtt_client.publish(status_topic, "stabilizing", true);
+        }
+
         if (strlen(last_reset_info) > 0) {
             char r_topic[128], r_payload[200];
             snprintf(r_topic, sizeof(r_topic), "%s/last_reset", MQTT_ROOT_TOPIC);
             snprintf(r_payload, sizeof(r_payload), "Version: %s | %s", VERSION, last_reset_info);
             mqtt_client.publish(r_topic, r_payload, true);
         }
-        if (system_verified) mqtt_client.publish(status_topic, "online", true);
+        
         if (discovery_published) publish_ha_discovery();
         return true;
     }
@@ -443,12 +452,23 @@ void processLine(int len) {
 }
 
 void read_p1_hardwareserial() {
-    if (ota_in_progress) return; // Block serial parsing during OTA to prevent interruptions
+    if (ota_in_progress) return; 
 
     static int pos = 0;
-    // Burst read to prevent hardware buffer overflow
+    static bool waiting_for_start = true; // Wait for '/' to begin reading
+
     while (Serial.available()) {
         char c = Serial.read();
+        
+        if (waiting_for_start) {
+            if (c == '/') {
+                waiting_for_start = false;
+                pos = 0;
+                telegram[pos++] = c;
+            }
+            continue; // Discard everything until we see a fresh start
+        }
+
         if (pos < P1_MAXLINELENGTH - 2) {
             telegram[pos++] = c;
             if (c == '\n') { 
@@ -456,9 +476,15 @@ void read_p1_hardwareserial() {
                 pos = 0; 
                 memset(telegram, 0, sizeof(telegram)); 
             }
+            // End of telegram is '!' followed by CRC and \n. 
+            // If we finish processing a full telegram, reset the start state to ignore garbage between telegrams.
+            if (pos > 0 && telegram[pos-1] == '\n' && telegram[pos-6] == '!') {
+                waiting_for_start = true;
+            }
         } else { 
             // Buffer overflow safety
             pos = 0; 
+            waiting_for_start = true; // Reset and wait for next fresh telegram
             memset(telegram, 0, sizeof(telegram)); 
         }
     }

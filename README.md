@@ -4,7 +4,7 @@
  | |___ ___) |  __/| (_)  (_) || (_) |  |  __/| |    | |  | | |___  | | | |___|  _ < 
  |_____|____/|_|    \___/\___/ \___/   |_|   |_|    |_|  |_|_____| |_| |_____|_| \_\
 
-# ⚡ ESP8266 P1-METER ⚡ [v1.5.1 - 2026 EDITION]
+# ⚡ ESP8266 P1-METER ⚡ [v1.5.3 - 2026 EDITION]
 
 ![WebUI Preview](assets/webui_preview.svg)
 
@@ -145,6 +145,8 @@ For security and performance, the WebUI **shuts down** once the meter connects t
 ---
 
 ### 📜 VERSION HISTORY
+- **v1.5.3** - 2026-03-22: Smart Garbage Collection. The serial parser now waits for a clean start byte (`/`) on boot/reconnect to prevent processing fragmented packets. Improved LWT state handling.
+- **v1.5.2** - 2026-03-22: Hotfix - Added `yield()` and `mqtt_client.loop()` to metric publishing to prevent TCP buffer exhaustion and Hardware Watchdog crashes during the massive initial MQTT burst.
 - **v1.5.1** - 2026-03-22: Added OTA Password field to the WiFiManager WebUI. The ElegantOTA `/update` portal now dynamically uses this password.
 - **v1.5.0** - 2026-03-22: Implemented ElegantOTA security tweaks. Added HTTP Basic Auth (`admin`), paused P1 parsing during updates to prevent buffer crashes, and added a graceful MQTT disconnect on successful firmware upload.
 - **v1.4.9** - 2026-03-22: Increased the Hardware Serial RX buffer to 2048 bytes to prevent P1 telegram corruption and CRC failures during WebUI/MQTT blocking events.
