@@ -28,7 +28,7 @@ This file serves as the foundational mandate for all future AI interactions with
 ## 🎨 WEB-UI & BRANDING
 - **Style:** "Hacker 2026" aesthetic (Black background, terminal-green `#0f0` monospace text, glowing borders).
 - **Hardcoded Branding:** Manufacturer, Model, and Base Device Name are hardcoded in `settings.h`. No WebUI configuration for these fields.
-- **Auto-AP:** WiFiManager must shut down the web server and AP once a successful WiFi connection is established.
+- **Async WebServer:** (v1.4.0) Use `ESPAsyncWebServer` for a non-blocking UI. The update portal at `/update` must remain online 24/7 without affecting the P1 loop.
 
 ## 🛠️ CODING STYLE
 - **Prototypes:** Always maintain function prototypes at the top of the `.ino` file to prevent scope/compilation errors.
@@ -36,5 +36,5 @@ This file serves as the foundational mandate for all future AI interactions with
 - **Precision:** Current, Voltage, and Gas must be transmitted as high-precision floats (scaled by 1000 in raw datagram, divided by 1000.0 before MQTT publish).
 
 ---
-**Current Stable Version:** 1.3.4
+**Current Stable Version:** 1.4.0
 **Project State:** Production-Ready / Optimized.

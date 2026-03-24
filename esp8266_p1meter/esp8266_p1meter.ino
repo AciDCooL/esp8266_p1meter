@@ -1,9 +1,10 @@
 /* 
- * ESP8266 P1 Meter - v1.3.4
+ * ESP8266 P1 Meter - v1.4.0
  * Re-engineered for maximum stability, zero heap fragmentation, 
  * and native Home Assistant Auto-Discovery.
+ * Includes Non-Blocking Async WebUI for OTA Updates.
  */
-#define VERSION "1.3.4"
+#define VERSION "1.4.0"
 
 #include <EEPROM.h>
 #include <DNSServer.h>
@@ -12,7 +13,9 @@
 #include <WiFiManager.h>
 #include <ESP8266mDNS.h>
 #include <WiFiUdp.h>
-#include <ArduinoOTA.h>
+#include <ESPAsyncTCP.h>
+#include <ESPAsyncWebServer.h>
+#include <AsyncElegantOTA.h>
 #include <PubSubClient.h>
 #include <DoubleResetDetector.h>
 #include <ArduinoJson.h>
@@ -33,7 +36,6 @@ void read_eeprom(int offset, int len, char* buffer);
 void write_eeprom(int offset, int len, const char* value);
 void save_wifi_config_callback();
 void resetWifi();
-void setup_ota();
 void setup_mdns();
 
 // * Include settings
@@ -44,6 +46,7 @@ DoubleResetDetector drd(DRD_TIMEOUT, DRD_ADDRESS);
 Ticker ticker;
 WiFiClient espClient;
 PubSubClient mqtt_client(espClient);
+AsyncWebServer server(80);
 
 // * Reset and Milestone tracking
 struct {
@@ -489,11 +492,6 @@ void resetWifi() {
 // * Setup & Initialization         *
 // **********************************
 
-void setup_ota() {
-    ArduinoOTA.setPort(8266); ArduinoOTA.setHostname(HOSTNAME); ArduinoOTA.setPassword(OTA_PASSWORD);
-    ArduinoOTA.begin();
-}
-
 void setup_mdns() { if (MDNS.begin(HOSTNAME)) MDNS.addService("http", "tcp", 80); }
 
 void setup() {
@@ -565,14 +563,19 @@ void setup() {
     }
 
     ticker.detach(); digitalWrite(LED_BUILTIN, LOW);
-    setup_ota(); setup_mdns();
+    setup_mdns();
+    
+    // Async Web Server & ElegantOTA
+    AsyncElegantOTA.begin(&server);
+    server.begin();
+    Serial.println(F("Async Web Server & OTA ready."));
+
     mqtt_client.setBufferSize(MQTT_BUFFER_SIZE);
     mqtt_client.setServer(MQTT_HOST, atoi(MQTT_PORT));
     boot_time = millis();
 }
 
 void loop() {
-    ArduinoOTA.handle();
     unsigned long now = millis();
     if (WiFi.status() != WL_CONNECTED) {
         if (now - lastReconnectAttempt > 30000) { WiFi.reconnect(); lastReconnectAttempt = now; }
