@@ -1,10 +1,9 @@
 /* 
- * ESP8266 P1 Meter - v1.4.0
+ * ESP8266 P1 Meter - v1.4.1
  * Re-engineered for maximum stability, zero heap fragmentation, 
  * and native Home Assistant Auto-Discovery.
- * Includes Non-Blocking Async WebUI for OTA Updates.
  */
-#define VERSION "1.4.0"
+#define VERSION "1.4.1"
 
 #include <EEPROM.h>
 #include <DNSServer.h>
@@ -84,7 +83,12 @@ void update_rtc_totals() {
 }
 
 bool is_data_sane(long current, long last, long max_delta, const char* label) {
-    if (last <= 0) return true; // Initial seed
+    // If current is 0, it's likely a parsing error or partial telegram, ignore it
+    if (current <= 0) return false;
+    
+    // If last is 0 or RTC is uninitialized, accept the data to seed the system
+    if (last <= 0 || rtc_persistent.marker != RTC_MARKER) return true; 
+    
     long delta = current - last;
     if (delta >= 0 && delta < max_delta) return true;
     
@@ -446,6 +450,7 @@ bool decode_telegram(int len) {
 void processLine(int len) {
     if (len >= P1_MAXLINELENGTH - 2) len = P1_MAXLINELENGTH - 3; 
     telegram[len] = '\n'; telegram[len + 1] = 0; yield();
+    Serial.printf("P1 Line: %s", telegram); // RAW DEBUGGING
     if (decode_telegram(len + 1)) {
         if (millis() - LAST_UPDATE_SENT > UPDATE_INTERVAL) {
             send_data_to_broker(); LAST_UPDATE_SENT = millis();
@@ -497,7 +502,7 @@ void setup_mdns() { if (MDNS.begin(HOSTNAME)) MDNS.addService("http", "tcp", 80)
 void setup() {
     EEPROM.begin(512);
     Serial.begin(BAUD_RATE, SERIAL_8N1, SERIAL_FULL);
-    Serial.setTimeout(50);
+    Serial.setTimeout(500); // Increased timeout for high-speed serial stability
     
     ESP.rtcUserMemoryRead(RTC_BASE_ADDR, (uint32_t*)&rtc_persistent, sizeof(rtc_persistent));
     const char* m_name = "Unknown";
