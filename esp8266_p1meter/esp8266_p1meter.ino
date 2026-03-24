@@ -1,9 +1,9 @@
 /* 
- * ESP8266 P1 Meter - v1.3.2
+ * ESP8266 P1 Meter - v1.3.3
  * Re-engineered for maximum stability, zero heap fragmentation, 
  * and native Home Assistant Auto-Discovery.
  */
-#define VERSION "1.3.2"
+#define VERSION "1.3.3"
 
 #include <EEPROM.h>
 #include <DNSServer.h>
@@ -513,10 +513,10 @@ void setup() {
     Serial.begin(BAUD_RATE, SERIAL_8N1, SERIAL_FULL);
     Serial.setTimeout(50);
     
-    ESP.rtcUserMemoryRead(RTC_BASE_ADDR, (uint32_t*)&rtc_data, sizeof(rtc_data));
+    ESP.rtcUserMemoryRead(RTC_BASE_ADDR, (uint32_t*)&rtc_persistent, sizeof(rtc_persistent));
     const char* m_name = "Unknown";
-    if (rtc_data.marker == RTC_MARKER) {
-        switch(rtc_data.milestone) {
+    if (rtc_persistent.marker == RTC_MARKER) {
+        switch(rtc_persistent.milestone) {
             case 1: m_name = "Booting"; break;
             case 2: m_name = "WiFi Connecting"; break;
             case 3: m_name = "Running"; break;
