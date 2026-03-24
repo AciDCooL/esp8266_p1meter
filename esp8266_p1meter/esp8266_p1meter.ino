@@ -1,9 +1,9 @@
 /* 
- * ESP8266 P1 Meter - v1.5.0
+ * ESP8266 P1 Meter - v1.5.1
  * Re-engineered for maximum stability, zero heap fragmentation, 
  * and native Home Assistant Auto-Discovery.
  */
-#define VERSION "1.5.0"
+#define VERSION "1.5.1"
 
 // * Libraries
 #include <EEPROM.h>
@@ -499,11 +499,15 @@ void setup() {
         read_eeprom(70, 32, MQTT_USER); read_eeprom(102, 32, MQTT_PASS);
         read_eeprom(135, 1, ha_val_str);
         HA_AUTO_DISCOVERY = (ha_val_str[0] == '1');
+        // Load OTA password from EEPROM starting at byte 136 (length 32)
+        read_eeprom(136, 32, OTA_PASS); 
     }
     WiFiManagerParameter c_host("host", "MQTT hostname", MQTT_HOST, 64);
     WiFiManagerParameter c_port("port", "MQTT port", MQTT_PORT, 6);
     WiFiManagerParameter c_user("user", "MQTT user", MQTT_USER, 32);
     WiFiManagerParameter c_pass("pass", "MQTT pass", MQTT_PASS, 32);
+    WiFiManagerParameter c_ota_pass("ota_pass", "WebUI / OTA Password", OTA_PASS, 32);
+    
     char ch[200]; snprintf(ch, sizeof(ch), "type='hidden' id='ha_val'><label style='color:#0f0;cursor:pointer;'><input type='checkbox' %s onchange=\"document.getElementById('ha_val').value=this.checked?'1':'0';\"> Enable HA Discovery</label>", HA_AUTO_DISCOVERY ? "checked" : "");
     WiFiManagerParameter c_ha("ha_val", "", ha_val_str, 2, ch);
     WiFiManager wifiManager;
@@ -514,23 +518,27 @@ void setup() {
     wifiManager.setSaveConfigCallback(save_wifi_config_callback);
     wifiManager.addParameter(&c_host); wifiManager.addParameter(&c_port);
     wifiManager.addParameter(&c_user); wifiManager.addParameter(&c_pass);
+    wifiManager.addParameter(&c_ota_pass);
     wifiManager.addParameter(&c_ha);
     set_milestone(2);
     if (!wifiManager.autoConnect()) ESP.restart();
     strcpy(MQTT_HOST, c_host.getValue()); strcpy(MQTT_PORT, c_port.getValue());
     strcpy(MQTT_USER, c_user.getValue()); strcpy(MQTT_PASS, c_pass.getValue());
+    strcpy(OTA_PASS, c_ota_pass.getValue());
+    
     if (c_ha.getValue()[0] == '1' || c_ha.getValue()[0] == '0') HA_AUTO_DISCOVERY = (c_ha.getValue()[0] == '1');
     if (shouldSaveConfig) {
         write_eeprom(0, 64, MQTT_HOST); write_eeprom(64, 6, MQTT_PORT);
         write_eeprom(70, 32, MQTT_USER); write_eeprom(102, 32, MQTT_PASS);
         write_eeprom(134, 1, "1"); write_eeprom(135, 1, HA_AUTO_DISCOVERY ? "1" : "0");
+        write_eeprom(136, 32, OTA_PASS);
         EEPROM.commit();
     }
     ticker.detach(); digitalWrite(LED_BUILTIN, LOW);
     setup_mdns();
     
     ElegantOTA.begin(&server);
-    ElegantOTA.setAuth("admin", OTA_PASSWORD); // Security
+    ElegantOTA.setAuth("admin", OTA_PASS); // Security via Dynamic UI Parameter
     
     ElegantOTA.onStart([]() {
         Serial.println("OTA Update Starting. Pausing P1 Serial Parser.");

@@ -24,7 +24,6 @@
 #define P1_MAXLINELENGTH 2050 
 #define MQTT_BUFFER_SIZE 1024 
 #define HOSTNAME "p1meter"
-#define OTA_PASSWORD "rXqEqAY7D8L9n2"
 #define WIFI_TIMEOUT 30000
 #define MQTT_MAX_RECONNECT_TRIES 10
 #define MQTT_ROOT_TOPIC "sensors/power/p1meter"
@@ -39,6 +38,7 @@ char MQTT_HOST[65] = "192.168.1.100";
 char MQTT_PORT[7] = "1883";
 char MQTT_USER[33] = "mqtt_user";
 char MQTT_PASS[33] = "mqtt_pass";
+char OTA_PASS[33] = "admin"; // Default OTA password if none is set
 
 char telegram[P1_MAXLINELENGTH];
 
