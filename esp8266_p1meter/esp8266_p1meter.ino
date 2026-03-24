@@ -1,9 +1,9 @@
 /* 
- * ESP8266 P1 Meter - v1.4.7
+ * ESP8266 P1 Meter - v1.4.8
  * Re-engineered for maximum stability, zero heap fragmentation, 
  * and native Home Assistant Auto-Discovery.
  */
-#define VERSION "1.4.7"
+#define VERSION "1.4.8"
 
 // * Libraries
 #include <EEPROM.h>
@@ -487,6 +487,10 @@ void setup() {
     ticker.detach(); digitalWrite(LED_BUILTIN, LOW);
     setup_mdns();
     ElegantOTA.begin(&server);
+    server.on("/", []() {
+        server.sendHeader("Location", "/update");
+        server.send(302, "text/plain", "");
+    });
     server.begin();
     mqtt_client.setBufferSize(MQTT_BUFFER_SIZE);
     mqtt_client.setServer(MQTT_HOST, atoi(MQTT_PORT));
