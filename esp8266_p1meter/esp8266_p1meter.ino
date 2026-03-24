@@ -336,19 +336,31 @@ bool decode_telegram(int len) {
     int startChar = FindCharInArrayRev(telegram, '/', len);
     int endChar = FindCharInArrayRev(telegram, '!', len);
     bool validCRCFound = false;
-    if (startChar >= 0) currentCRC = CRC16(0x0000, (unsigned char *)telegram + startChar, len - startChar);
-    else if (endChar >= 0) {
+
+    // The CRC calculation must match exactly what the meter expects.
+    // Some meters include the final \n in the CRC, some don't. 
+    // We calculate from '/' to '!' inclusive.
+    if (startChar >= 0) {
+        currentCRC = CRC16(0x0000, (unsigned char *)telegram + startChar, len - startChar);
+    } else if (endChar >= 0) {
+        // Add the '!' to the CRC
         currentCRC = CRC16(currentCRC, (unsigned char *)telegram + endChar, 1);
-        char messageCRC[5]; strncpy(messageCRC, telegram + endChar + 1, 4); messageCRC[4] = 0;
+        
+        char messageCRC[5]; 
+        strncpy(messageCRC, telegram + endChar + 1, 4); 
+        messageCRC[4] = 0;
+        
         validCRCFound = ((unsigned int)strtol(messageCRC, NULL, 16) == currentCRC);
         if (!validCRCFound) {
             char debug_topic[128]; snprintf(debug_topic, sizeof(debug_topic), "%s/debug_crc", MQTT_ROOT_TOPIC);
             char debug_msg[128]; snprintf(debug_msg, sizeof(debug_msg), "CRC FAIL: Calc=%04X, Meter=%s", currentCRC, messageCRC);
             mqtt_client.publish(debug_topic, debug_msg, false);
-            Serial.printf("CRC FAIL: Calc=%04X, Meter=%s\n", currentCRC, messageCRC);
         }
         currentCRC = 0;
-    } else currentCRC = CRC16(currentCRC, (unsigned char *)telegram, len);
+    } else {
+        // Normal lines
+        currentCRC = CRC16(currentCRC, (unsigned char *)telegram, len);
+    }
 
     if (strncmp(telegram, "1-0:1.8.1", 9) == 0) { CONSUMPTION_HIGH_TARIF = getValue(telegram, len, '(', '*'); mark_seen("consumption_high_tarif"); }
     if (strncmp(telegram, "1-0:1.8.2", 9) == 0) { CONSUMPTION_LOW_TARIF = getValue(telegram, len, '(', '*'); mark_seen("consumption_low_tarif"); }
@@ -423,12 +435,21 @@ void processLine(int len) {
 
 void read_p1_hardwareserial() {
     static int pos = 0;
+    // Burst read to prevent hardware buffer overflow
     while (Serial.available()) {
         char c = Serial.read();
         if (pos < P1_MAXLINELENGTH - 2) {
             telegram[pos++] = c;
-            if (c == '\n') { processLine(pos); pos = 0; memset(telegram, 0, sizeof(telegram)); }
-        } else { pos = 0; memset(telegram, 0, sizeof(telegram)); }
+            if (c == '\n') { 
+                processLine(pos); 
+                pos = 0; 
+                memset(telegram, 0, sizeof(telegram)); 
+            }
+        } else { 
+            // Buffer overflow safety
+            pos = 0; 
+            memset(telegram, 0, sizeof(telegram)); 
+        }
     }
 }
 
