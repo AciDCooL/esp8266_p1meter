@@ -1,10 +1,10 @@
 /* 
- * ESP8266 P1 Meter - v1.4.4
+ * ESP8266 P1 Meter - v1.4.5
  * Re-engineered for maximum stability, zero heap fragmentation, 
  * and native Home Assistant Auto-Discovery.
  * Includes Non-Blocking Async WebUI for OTA Updates via ElegantOTA.
  */
-#define VERSION "1.4.4"
+#define VERSION "1.4.5"
 
 // * Libraries
 #include <EEPROM.h>
@@ -403,7 +403,6 @@ bool decode_telegram(int len) {
 void processLine(int len) {
     if (len >= P1_MAXLINELENGTH - 2) len = P1_MAXLINELENGTH - 3; 
     telegram[len] = 0; // Null terminate
-    // Note: Line already ends with \n from read_p1_hardwareserial
     if (decode_telegram(len)) {
         if (millis() - LAST_UPDATE_SENT > UPDATE_INTERVAL) { send_data_to_broker(); LAST_UPDATE_SENT = millis(); }
     }
@@ -415,16 +414,8 @@ void read_p1_hardwareserial() {
         char c = Serial.read();
         if (pos < P1_MAXLINELENGTH - 2) {
             telegram[pos++] = c;
-            if (c == '\n') {
-                processLine(pos);
-                pos = 0;
-                memset(telegram, 0, sizeof(telegram));
-            }
-        } else {
-            // Buffer overflow safety
-            pos = 0;
-            memset(telegram, 0, sizeof(telegram));
-        }
+            if (c == '\n') { processLine(pos); pos = 0; memset(telegram, 0, sizeof(telegram)); }
+        } else { pos = 0; memset(telegram, 0, sizeof(telegram)); }
     }
 }
 
@@ -445,7 +436,6 @@ void setup_mdns() { if (MDNS.begin(HOSTNAME)) MDNS.addService("http", "tcp", 80)
 void setup() {
     EEPROM.begin(512);
     Serial.begin(BAUD_RATE, SERIAL_8N1, SERIAL_FULL);
-    // Serial.setTimeout(500); // No longer needed with async read
     ESP.rtcUserMemoryRead(RTC_BASE_ADDR, (uint32_t*)&rtc_persistent, sizeof(rtc_persistent));
     const char* m_name = "Unknown";
     if (rtc_persistent.marker == RTC_MARKER) {
