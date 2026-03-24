@@ -1,9 +1,9 @@
 /* 
- * ESP8266 P1 Meter - v1.4.6
+ * ESP8266 P1 Meter - v1.4.7
  * Re-engineered for maximum stability, zero heap fragmentation, 
  * and native Home Assistant Auto-Discovery.
  */
-#define VERSION "1.4.6"
+#define VERSION "1.4.7"
 
 // * Libraries
 #include <EEPROM.h>
@@ -73,20 +73,25 @@ void set_milestone(uint32_t m) {
 }
 
 void update_rtc_totals() {
-    rtc_persistent.last_con_high = CONSUMPTION_HIGH_TARIF;
-    rtc_persistent.last_con_low = CONSUMPTION_LOW_TARIF;
-    rtc_persistent.last_ret_high = RETURNDELIVERY_HIGH_TARIF;
-    rtc_persistent.last_ret_low = RETURNDELIVERY_LOW_TARIF;
-    rtc_persistent.last_gas = GAS_METER_M3;
+    if (CONSUMPTION_HIGH_TARIF > 0) rtc_persistent.last_con_high = CONSUMPTION_HIGH_TARIF;
+    if (CONSUMPTION_LOW_TARIF > 0) rtc_persistent.last_con_low = CONSUMPTION_LOW_TARIF;
+    if (RETURNDELIVERY_HIGH_TARIF > 0) rtc_persistent.last_ret_high = RETURNDELIVERY_HIGH_TARIF;
+    if (RETURNDELIVERY_LOW_TARIF > 0) rtc_persistent.last_ret_low = RETURNDELIVERY_LOW_TARIF;
+    if (GAS_METER_M3 > 0) rtc_persistent.last_gas = GAS_METER_M3;
     rtc_persistent.marker = RTC_MARKER;
     ESP.rtcUserMemoryWrite(RTC_BASE_ADDR, (uint32_t*)&rtc_persistent, sizeof(rtc_persistent));
 }
 
 bool is_data_sane(long current, long last, long max_delta, const char* label) {
-    if (current <= 0) return false;
+    // If metric is 0 (hasn't arrived yet, or no return power), bypass check to prevent deadlock
+    if (current <= 0) return true;
+    
+    // If RTC has no history for this metric, accept to seed it
     if (last <= 0 || rtc_persistent.marker != RTC_MARKER) return true; 
+    
     long delta = current - last;
     if (delta >= 0 && delta < max_delta) return true;
+    
     Serial.printf("SANITY FAIL [%s]: Current=%ld, Last=%ld, Delta=%ld (Max=%ld)\n", label, current, last, delta, max_delta);
     return false;
 }
@@ -489,6 +494,9 @@ void setup() {
 }
 
 void loop() {
+    server.handleClient();
+    ElegantOTA.loop();
+    
     unsigned long now = millis();
     if (WiFi.status() != WL_CONNECTED) { if (now - lastReconnectAttempt > 30000) { WiFi.reconnect(); lastReconnectAttempt = now; } return; }
     if (!mqtt_client.connected()) { if (now - lastReconnectAttempt > 5000) { lastReconnectAttempt = now; if (mqtt_reconnect()) lastReconnectAttempt = 0; } } 

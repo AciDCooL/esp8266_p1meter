@@ -4,7 +4,7 @@
  | |___ ___) |  __/| (_)  (_) || (_) |  |  __/| |    | |  | | |___  | | | |___|  _ < 
  |_____|____/|_|    \___/\___/ \___/   |_|   |_|    |_|  |_|_____| |_| |_____|_| \_\
 
-# ⚡ ESP8266 P1-METER ⚡ [v1.4.4 - 2026 EDITION]
+# ⚡ ESP8266 P1-METER ⚡ [v1.4.7 - 2026 EDITION]
 
 ![WebUI Preview](assets/webui_preview.svg)
 
@@ -145,6 +145,8 @@ For security and performance, the WebUI **shuts down** once the meter connects t
 ---
 
 ### 📜 VERSION HISTORY
+- **v1.4.7** - 2026-03-22: Hotfix - Re-added `server.handleClient()` to restore the WebUI and fixed the Sanity Shield deadlock on zero-value metrics.
+- **v1.4.6** - 2026-03-22: Reverted to Standard WebServer to fix `ESPAsyncWebServer` conflicts in Arduino IDE.
 - **v1.4.4** - 2026-03-22: Non-blocking Serial parsing refactor. P1 meter data flow is now completely independent of WebServer/MQTT timing.
 - **v1.4.3** - 2026-03-22: Hotfix - Resolved HTTP_GET conflict and AsyncWebServer conversion for Arduino IDE.
 - **v1.4.2** - 2026-03-22: Migrated to latest **ElegantOTA v3**.
