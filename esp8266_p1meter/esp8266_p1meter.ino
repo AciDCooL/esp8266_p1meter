@@ -231,14 +231,17 @@ void send_mqtt_json(const char *topic, JsonDocument& doc) {
 }
 
 long LAST_CON_LOW = -1, LAST_CON_HIGH = -1, LAST_RET_LOW = -1, LAST_RET_HIGH = -1;
-long LAST_ACT_CON = -1, LAST_ACT_RET = -1, LAST_GAS = -1;
-long LAST_L1_P = -1, LAST_L2_P = -1, LAST_L3_P = -1, LAST_L1_C = -1, LAST_L2_C = -1, LAST_L3_C = -1, LAST_L1_V = -1, LAST_L2_V = -1, LAST_L3_V = -1;
+long LAST_ACT_CON = -1, LAST_ACT_RET = -1;
+float LAST_GAS = -1.0;
+long LAST_L1_P = -1, LAST_L2_P = -1, LAST_L3_P = -1;
+float LAST_L1_C = -1.0, LAST_L2_C = -1.0, LAST_L3_C = -1.0, LAST_L1_V = -1.0, LAST_L2_V = -1.0, LAST_L3_V = -1.0;
 long LAST_L1_R = -1, LAST_L2_R = -1, LAST_L3_R = -1;
 long LAST_TARIF = -1, LAST_S_OUT = -1, LAST_L_OUT = -1, LAST_S_DROP = -1, LAST_S_PEAK = -1;
-long LAST_AVG_15M = -1, LAST_MAX_15M = -1, LAST_AVG_13MO = -1, LAST_FREQ = -1;
+long LAST_AVG_15M = -1, LAST_MAX_15M = -1, LAST_AVG_13MO = -1;
+float LAST_FREQ = -1.0;
 unsigned long LAST_HEARTBEAT = 0;
 
-void send_metric(const char* name, long metric, long& last_value, int divisor) {
+void send_metric(const char* name, long metric, long& last_value) {
     bool seen = false;
     for (size_t i = 0; i < SENSOR_COUNT; i++) {
         if (strcmp(sensors[i].id, name) == 0) { if (!seen_metrics[i]) return; seen = true; break; }
@@ -247,14 +250,26 @@ void send_metric(const char* name, long metric, long& last_value, int divisor) {
     if (metric != last_value || (millis() - LAST_HEARTBEAT > 20000)) {
         char topic[128], payload[32];
         snprintf(topic, sizeof(topic), "%s/%s", MQTT_ROOT_TOPIC, name);
-        if (divisor == 1) ltoa(metric, payload, 10);
-        else dtostrf(metric / (float)divisor, 1, 3, payload);
+        ltoa(metric, payload, 10);
         if (mqtt_client.publish(topic, payload, false)) last_value = metric;
         
-        // Feed the WDT and flush TCP window to prevent crash during the initial massive burst
-        mqtt_client.loop(); 
-        yield(); 
-        delay(10); 
+        mqtt_client.loop(); yield(); delay(10); 
+    }
+}
+
+void send_metric_float(const char* name, float metric, float& last_value) {
+    bool seen = false;
+    for (size_t i = 0; i < SENSOR_COUNT; i++) {
+        if (strcmp(sensors[i].id, name) == 0) { if (!seen_metrics[i]) return; seen = true; break; }
+    }
+    if (!seen) return;
+    if (metric != last_value || (millis() - LAST_HEARTBEAT > 20000)) {
+        char topic[128], payload[32];
+        snprintf(topic, sizeof(topic), "%s/%s", MQTT_ROOT_TOPIC, name);
+        dtostrf(metric, 1, 3, payload); // 3 decimal places
+        if (mqtt_client.publish(topic, payload, false)) last_value = metric;
+        
+        mqtt_client.loop(); yield(); delay(10); 
     }
 }
 
@@ -290,14 +305,14 @@ void send_data_to_broker() {
     send_metric("l1_instant_power_returndelivery", L1_INSTANT_POWER_RETURNDELIVERY, LAST_L1_R);
     send_metric("l2_instant_power_returndelivery", L2_INSTANT_POWER_RETURNDELIVERY, LAST_L2_R);
     send_metric("l3_instant_power_returndelivery", L3_INSTANT_POWER_RETURNDELIVERY, LAST_L3_R);
-    send_metric("l1_instant_power_current", L1_INSTANT_POWER_CURRENT, LAST_L1_C, 1000);
-    send_metric("l2_instant_power_current", L2_INSTANT_POWER_CURRENT, LAST_L2_C, 1000);
-    send_metric("l3_instant_power_current", L3_INSTANT_POWER_CURRENT, LAST_L3_C, 1000);
-    send_metric("l1_voltage", L1_VOLTAGE, LAST_L1_V, 1000);
-    send_metric("l2_voltage", L2_VOLTAGE, LAST_L2_V, 1000);
-    send_metric("l3_voltage", L3_VOLTAGE, LAST_L3_V, 1000);
-    send_metric("frequency", FREQUENCY, LAST_FREQ, 1000);
-    send_metric("gas_meter_m3", GAS_METER_M3, LAST_GAS, 1000);
+    send_metric_float("l1_instant_power_current", L1_INSTANT_POWER_CURRENT, LAST_L1_C);
+    send_metric_float("l2_instant_power_current", L2_INSTANT_POWER_CURRENT, LAST_L2_C);
+    send_metric_float("l3_instant_power_current", L3_INSTANT_POWER_CURRENT, LAST_L3_C);
+    send_metric_float("l1_voltage", L1_VOLTAGE, LAST_L1_V);
+    send_metric_float("l2_voltage", L2_VOLTAGE, LAST_L2_V);
+    send_metric_float("l3_voltage", L3_VOLTAGE, LAST_L3_V);
+    send_metric_float("frequency", FREQUENCY, LAST_FREQ);
+    send_metric_float("gas_meter_m3", GAS_METER_M3, LAST_GAS);
     send_metric("actual_tarif_group", ACTUAL_TARIF, LAST_TARIF);
     send_metric("short_power_outages", SHORT_POWER_OUTAGES, LAST_S_OUT);
     send_metric("long_power_outages", LONG_POWER_OUTAGES, LAST_L_OUT);
@@ -345,9 +360,21 @@ long getValue(const char *buffer, int maxlen, char startchar, char endchar) {
     char res[16]; memset(res, 0, sizeof(res));
     if (strncpy(res, buffer + s + 1, l)) {
         for(int i=0; i<l; i++) if(res[i] == ',') res[i] = '.';
-        if (isNumber(res, l)) { if (endchar == '*') return (1000 * atof(res)); return atof(res); }
+        if (isNumber(res, l)) { return (1000 * atof(res)); } // Always scale Power to Watts
     }
     return 0;
+}
+
+float getValueFloat(const char *buffer, int maxlen, char startchar, char endchar) {
+    int e = FindCharInArrayRev(buffer, endchar, maxlen); if (e < 0) return 0.0;
+    int s = FindCharInArrayRev(buffer, startchar, e); if (s < 0) return 0.0;
+    int l = e - s - 1; if (l <= 0 || l >= 16) return 0.0;
+    char res[16]; memset(res, 0, sizeof(res));
+    if (strncpy(res, buffer + s + 1, l)) {
+        for(int i=0; i<l; i++) if(res[i] == ',') res[i] = '.';
+        if (isNumber(res, l)) { return atof(res); } // Return raw float for Voltage/Current/Gas
+    }
+    return 0.0;
 }
 
 bool decode_telegram(int len) {
@@ -392,14 +419,14 @@ bool decode_telegram(int len) {
     if (strncmp(telegram, "1-0:22.7.0", 10) == 0) { L1_INSTANT_POWER_RETURNDELIVERY = getValue(telegram, len, '(', '*'); mark_seen("l1_instant_power_returndelivery"); }
     if (strncmp(telegram, "1-0:42.7.0", 10) == 0) { L2_INSTANT_POWER_RETURNDELIVERY = getValue(telegram, len, '(', '*'); mark_seen("l2_instant_power_returndelivery"); }
     if (strncmp(telegram, "1-0:62.7.0", 10) == 0) { L3_INSTANT_POWER_RETURNDELIVERY = getValue(telegram, len, '(', '*'); mark_seen("l3_instant_power_returndelivery"); }
-    if (strncmp(telegram, "1-0:31.7.0", 10) == 0) { L1_INSTANT_POWER_CURRENT = getValue(telegram, len, '(', '*'); mark_seen("l1_instant_power_current"); }
-    if (strncmp(telegram, "1-0:51.7.0", 10) == 0) { L2_INSTANT_POWER_CURRENT = getValue(telegram, len, '(', '*'); mark_seen("l2_instant_power_current"); }
-    if (strncmp(telegram, "1-0:71.7.0", 10) == 0) { L3_INSTANT_POWER_CURRENT = getValue(telegram, len, '(', '*'); mark_seen("l3_instant_power_current"); }
-    if (strncmp(telegram, "1-0:32.7.0", 10) == 0) { L1_VOLTAGE = getValue(telegram, len, '(', '*'); mark_seen("l1_voltage"); }
-    if (strncmp(telegram, "1-0:52.7.0", 10) == 0) { L2_VOLTAGE = getValue(telegram, len, '(', '*'); mark_seen("l2_voltage"); }
-    if (strncmp(telegram, "1-0:72.7.0", 10) == 0) { L3_VOLTAGE = getValue(telegram, len, '(', '*'); mark_seen("l3_voltage"); }
-    if (strncmp(telegram, "0-0:14.7.0", 10) == 0) { FREQUENCY = getValue(telegram, len, '(', '*'); mark_seen("frequency"); }
-    if (strstr(telegram, "24.2.1") || strstr(telegram, "24.2.3")) { GAS_METER_M3 = getValue(telegram, len, '(', '*'); mark_seen("gas_meter_m3"); }
+    if (strncmp(telegram, "1-0:31.7.0", 10) == 0) { L1_INSTANT_POWER_CURRENT = getValueFloat(telegram, len, '(', '*'); mark_seen("l1_instant_power_current"); }
+    if (strncmp(telegram, "1-0:51.7.0", 10) == 0) { L2_INSTANT_POWER_CURRENT = getValueFloat(telegram, len, '(', '*'); mark_seen("l2_instant_power_current"); }
+    if (strncmp(telegram, "1-0:71.7.0", 10) == 0) { L3_INSTANT_POWER_CURRENT = getValueFloat(telegram, len, '(', '*'); mark_seen("l3_instant_power_current"); }
+    if (strncmp(telegram, "1-0:32.7.0", 10) == 0) { L1_VOLTAGE = getValueFloat(telegram, len, '(', '*'); mark_seen("l1_voltage"); }
+    if (strncmp(telegram, "1-0:52.7.0", 10) == 0) { L2_VOLTAGE = getValueFloat(telegram, len, '(', '*'); mark_seen("l2_voltage"); }
+    if (strncmp(telegram, "1-0:72.7.0", 10) == 0) { L3_VOLTAGE = getValueFloat(telegram, len, '(', '*'); mark_seen("l3_voltage"); }
+    if (strncmp(telegram, "0-0:14.7.0", 10) == 0) { FREQUENCY = getValueFloat(telegram, len, '(', '*'); mark_seen("frequency"); }
+    if (strstr(telegram, "24.2.1") || strstr(telegram, "24.2.3")) { GAS_METER_M3 = getValueFloat(telegram, len, '(', '*'); mark_seen("gas_meter_m3"); }
     if (strncmp(telegram, "0-0:96.14.0", 11) == 0) { ACTUAL_TARIF = getValue(telegram, len, '(', ')'); mark_seen("actual_tarif_group"); }
     if (strncmp(telegram, "0-0:96.7.21", 11) == 0) { SHORT_POWER_OUTAGES = getValue(telegram, len, '(', ')'); mark_seen("short_power_outages"); }
     if (strncmp(telegram, "0-0:96.7.9", 10) == 0) { LONG_POWER_OUTAGES = getValue(telegram, len, '(', ')'); mark_seen("long_power_outages"); }
