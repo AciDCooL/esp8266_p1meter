@@ -1,9 +1,10 @@
 /* 
- * ESP8266 P1 Meter - v1.4.3
+ * ESP8266 P1 Meter - v1.4.4
  * Re-engineered for maximum stability, zero heap fragmentation, 
  * and native Home Assistant Auto-Discovery.
+ * Includes Non-Blocking Async WebUI for OTA Updates via ElegantOTA.
  */
-#define VERSION "1.4.3"
+#define VERSION "1.4.4"
 
 // * Libraries
 #include <EEPROM.h>
@@ -12,6 +13,7 @@
 #include <Ticker.h>
 
 // Pre-processor guards to prevent ESPAsyncWebServer vs ESP8266WebServer conflicts
+// This is required because WiFiManager includes the old synchronous WebServer.
 #define WEBSERVER_H
 #include <ESPAsyncTCP.h>
 #include <ESPAsyncWebServer.h>
@@ -259,6 +261,7 @@ void send_data_to_broker() {
             system_verified = true;
             char status_topic[128]; snprintf(status_topic, sizeof(status_topic), "%s/status", MQTT_ROOT_TOPIC);
             mqtt_client.publish(status_topic, "online", true);
+            Serial.println(F("SYSTEM VERIFIED: Online."));
         } else return;
     }
     send_metric("consumption_low_tarif", CONSUMPTION_LOW_TARIF, LAST_CON_LOW);
@@ -342,6 +345,7 @@ bool decode_telegram(int len) {
         currentCRC = CRC16(currentCRC, (unsigned char *)telegram + endChar, 1);
         char messageCRC[5]; strncpy(messageCRC, telegram + endChar + 1, 4); messageCRC[4] = 0;
         validCRCFound = ((unsigned int)strtol(messageCRC, NULL, 16) == currentCRC);
+        if (!validCRCFound) Serial.printf("CRC FAIL: Calc=%04X, Meter=%s\n", currentCRC, messageCRC);
         currentCRC = 0;
     } else currentCRC = CRC16(currentCRC, (unsigned char *)telegram, len);
 
@@ -398,19 +402,27 @@ bool decode_telegram(int len) {
 
 void processLine(int len) {
     if (len >= P1_MAXLINELENGTH - 2) len = P1_MAXLINELENGTH - 3; 
-    telegram[len] = '\n'; telegram[len + 1] = 0; yield();
-    Serial.printf("P1 Line: %s", telegram);
-    if (decode_telegram(len + 1)) {
+    telegram[len] = 0; // Null terminate
+    // Note: Line already ends with \n from read_p1_hardwareserial
+    if (decode_telegram(len)) {
         if (millis() - LAST_UPDATE_SENT > UPDATE_INTERVAL) { send_data_to_broker(); LAST_UPDATE_SENT = millis(); }
     }
 }
 
 void read_p1_hardwareserial() {
-    if (Serial.available()) {
-        set_milestone(4); memset(telegram, 0, sizeof(telegram));
-        while (Serial.available()) {
-            int len = Serial.readBytesUntil('\n', telegram, P1_MAXLINELENGTH - 2);
-            if (len > 0) processLine(len);
+    static int pos = 0;
+    while (Serial.available()) {
+        char c = Serial.read();
+        if (pos < P1_MAXLINELENGTH - 2) {
+            telegram[pos++] = c;
+            if (c == '\n') {
+                processLine(pos);
+                pos = 0;
+                memset(telegram, 0, sizeof(telegram));
+            }
+        } else {
+            // Buffer overflow safety
+            pos = 0;
             memset(telegram, 0, sizeof(telegram));
         }
     }
@@ -433,7 +445,7 @@ void setup_mdns() { if (MDNS.begin(HOSTNAME)) MDNS.addService("http", "tcp", 80)
 void setup() {
     EEPROM.begin(512);
     Serial.begin(BAUD_RATE, SERIAL_8N1, SERIAL_FULL);
-    Serial.setTimeout(500);
+    // Serial.setTimeout(500); // No longer needed with async read
     ESP.rtcUserMemoryRead(RTC_BASE_ADDR, (uint32_t*)&rtc_persistent, sizeof(rtc_persistent));
     const char* m_name = "Unknown";
     if (rtc_persistent.marker == RTC_MARKER) {
@@ -500,7 +512,7 @@ void loop() {
     if (WiFi.status() != WL_CONNECTED) { if (now - lastReconnectAttempt > 30000) { WiFi.reconnect(); lastReconnectAttempt = now; } return; }
     if (!mqtt_client.connected()) { if (now - lastReconnectAttempt > 5000) { lastReconnectAttempt = now; if (mqtt_reconnect()) lastReconnectAttempt = 0; } } 
     else mqtt_client.loop();
-    if (Serial.available()) read_p1_hardwareserial();
+    read_p1_hardwareserial();
     drd.loop();
     if (!discovery_published && (now - boot_time > 30000)) { if (mqtt_client.connected()) publish_ha_discovery(); }
 }
