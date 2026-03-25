@@ -1,4 +1,12 @@
-#define VERSION "1.5.7"
+#define VERSION "1.6.0"
+
+#ifdef ARDUINO_ESP8266_WEMOS_D1MINI
+#define BOARD_NAME "Wemos D1 Mini"
+#elif defined(ARDUINO_ESP8266_NODEMCU)
+#define BOARD_NAME "NodeMCU"
+#else
+#define BOARD_NAME "Generic ESP8266"
+#endif
 
 // * Libraries
 #include <EEPROM.h>
@@ -60,8 +68,10 @@ struct {
 bool system_verified = false;
 int valid_telegram_count = 0;
 bool ota_in_progress = false;
+unsigned long last_p1_received = 0; 
 #define STABILIZATION_THRESHOLD 3
 #define MAX_ENERGY_DELTA 10000 // Max 10kWh jump in 1s
+#define SERIAL_WEDGE_TIMEOUT 60000 // 60 seconds without data = re-init
 
 void set_milestone(uint32_t m) {
     rtc_persistent.milestone = m;
@@ -101,34 +111,39 @@ struct HASensor {
     const char* device_class;
     const char* state_class;
     const char* icon;
+    const char* category;
 };
 
 const HASensor sensors[] = {
-    {"consumption_low_tarif", "Consumption Low Tarif", "Wh", "energy", "total_increasing", ""},
-    {"consumption_high_tarif", "Consumption High Tarif", "Wh", "energy", "total_increasing", ""},
-    {"returndelivery_low_tarif", "Return Low Tarif", "Wh", "energy", "total_increasing", ""},
-    {"returndelivery_high_tarif", "Return High Tarif", "Wh", "energy", "total_increasing", ""},
-    {"actual_consumption", "Actual Consumption", "W", "power", "measurement", ""},
-    {"actual_returndelivery", "Actual Return", "W", "power", "measurement", ""},
-    {"l1_instant_power_usage", "L1 Power Usage", "W", "power", "measurement", ""},
-    {"l2_instant_power_usage", "L2 Power Usage", "W", "power", "measurement", ""},
-    {"l3_instant_power_usage", "L3 Power Usage", "W", "power", "measurement", ""},
-    {"l1_instant_power_returndelivery", "L1 Power Return", "W", "power", "measurement", ""},
-    {"l2_instant_power_returndelivery", "L2 Power Return", "W", "power", "measurement", ""},
-    {"l3_instant_power_returndelivery", "L3 Power Return", "W", "power", "measurement", ""},
-    {"l1_instant_power_current", "L1 Current", "A", "current", "measurement", ""},
-    {"l2_instant_power_current", "L2 Current", "A", "current", "measurement", ""},
-    {"l3_instant_power_current", "L3 Current", "A", "current", "measurement", ""},
-    {"l1_voltage", "L1 Voltage", "V", "voltage", "measurement", ""},
-    {"l2_voltage", "L2 Voltage", "V", "voltage", "measurement", ""},
-    {"l3_voltage", "L3 Voltage", "V", "voltage", "measurement", ""},
-    {"frequency", "Line Frequency", "Hz", "frequency", "measurement", ""},
-    {"gas_meter_m3", "Gas Meter", "m³", "gas", "total_increasing", ""},
-    {"actual_average_15m_peak", "Peak 15m Average", "W", "power", "measurement", ""},
-    {"thismonth_max_15m_peak", "Peak Max This Month", "W", "power", "measurement", ""},
-    {"last13months_average_15m_peak", "Peak 13 Months Avg", "W", "power", "measurement", ""},
-    {"wifi_rssi", "WiFi Signal", "dBm", "signal_strength", "measurement", "mdi:wifi"},
-    {"ip_address", "IP Address", "", "", "", "mdi:network"}
+    {"consumption_low_tarif", "Consumption Low Tarif", "Wh", "energy", "total_increasing", "", ""},
+    {"consumption_high_tarif", "Consumption High Tarif", "Wh", "energy", "total_increasing", "", ""},
+    {"returndelivery_low_tarif", "Return Low Tarif", "Wh", "energy", "total_increasing", "", ""},
+    {"returndelivery_high_tarif", "Return High Tarif", "Wh", "energy", "total_increasing", "", ""},
+    {"actual_consumption", "Actual Consumption", "W", "power", "measurement", "", ""},
+    {"actual_returndelivery", "Actual Return", "W", "power", "measurement", "", ""},
+    {"l1_instant_power_usage", "L1 Power Usage", "W", "power", "measurement", "", ""},
+    {"l2_instant_power_usage", "L2 Power Usage", "W", "power", "measurement", "", ""},
+    {"l3_instant_power_usage", "L3 Power Usage", "W", "power", "measurement", "", ""},
+    {"l1_instant_power_returndelivery", "L1 Power Return", "W", "power", "measurement", "", ""},
+    {"l2_instant_power_returndelivery", "L2 Power Return", "W", "power", "measurement", "", ""},
+    {"l3_instant_power_returndelivery", "L3 Power Return", "W", "power", "measurement", "", ""},
+    {"l1_instant_power_current", "L1 Current", "A", "current", "measurement", "", ""},
+    {"l2_instant_power_current", "L2 Current", "A", "current", "measurement", "", ""},
+    {"l3_instant_power_current", "L3 Current", "A", "current", "measurement", "", ""},
+    {"l1_voltage", "L1 Voltage", "V", "voltage", "measurement", "", ""},
+    {"l2_voltage", "L2 Voltage", "V", "voltage", "measurement", "", ""},
+    {"l3_voltage", "L3 Voltage", "V", "voltage", "measurement", "", ""},
+    {"frequency", "Line Frequency", "Hz", "frequency", "measurement", "", ""},
+    {"gas_meter_m3", "Gas Meter", "m³", "gas", "total_increasing", "", ""},
+    {"actual_average_15m_peak", "Peak 15m Average", "W", "power", "measurement", "", ""},
+    {"thismonth_max_15m_peak", "Peak Max This Month", "W", "power", "measurement", "", ""},
+    {"last13months_average_15m_peak", "Peak 13 Months Avg", "W", "power", "measurement", "", ""},
+    {"wifi_rssi", "WiFi Signal", "dBm", "signal_strength", "measurement", "mdi:wifi", "diagnostic"},
+    {"ip_address", "IP Address", "", "", "", "mdi:network", "diagnostic"},
+    {"mac_address", "MAC Address", "", "", "", "mdi:fingerprint", "diagnostic"},
+    {"board_type", "Board Type", "", "", "", "mdi:chip", "diagnostic"},
+    {"firmware_version", "Firmware Version", "", "", "", "mdi:xml", "diagnostic"},
+    {"mqtt_server", "MQTT Server", "", "", "", "mdi:server", "diagnostic"}
 };
 
 #define SENSOR_COUNT (sizeof(sensors) / sizeof(HASensor))
@@ -153,9 +168,11 @@ void publish_ha_discovery() {
 
     JsonDocument doc;
     for (size_t i = 0; i < SENSOR_COUNT; i++) {
-        if (!seen_metrics[i] && strcmp(sensors[i].id, "wifi_rssi") != 0 && strcmp(sensors[i].id, "ip_address") != 0) continue;
-        doc.clear();
         const HASensor& s = sensors[i];
+        // Only skip if not a diagnostic sensor and not seen yet
+        if (strcmp(s.category, "diagnostic") != 0 && !seen_metrics[i]) continue;
+        
+        doc.clear();
         snprintf(topic, sizeof(topic), "%s/sensor/%s/%s/config", HA_DISCOVERY_PREFIX, dev_id, s.id);
         doc["name"] = s.name;
         char uid[64]; snprintf(uid, sizeof(uid), "%s_%s", dev_id, s.id);
@@ -169,15 +186,18 @@ void publish_ha_discovery() {
         if (strlen(s.device_class) > 0) doc["device_class"] = s.device_class;
         if (strlen(s.state_class) > 0) doc["state_class"] = s.state_class;
         if (strlen(s.icon) > 0) doc["icon"] = s.icon;
-        if (strcmp(s.id, "wifi_rssi") == 0 || strcmp(s.id, "ip_address") == 0) doc["entity_category"] = "diagnostic";
+        if (strlen(s.category) > 0) doc["entity_category"] = s.category;
+        
         JsonObject dev = doc["device"].to<JsonObject>();
         dev["identifiers"][0] = dev_id;
         dev["name"] = dev_name;
         dev["manufacturer"] = HA_MANUFACTURER;
         dev["model"] = HA_MODEL;
         dev["sw_version"] = VERSION;
-        serializeJson(doc, payload, sizeof(payload));
-        mqtt_client.publish(topic, payload, true);
+        
+        char buffer[600];
+        serializeJson(doc, buffer, sizeof(buffer));
+        mqtt_client.publish(topic, buffer, true);
         mqtt_client.loop(); yield(); delay(20); 
     }
     discovery_published = true;
@@ -232,7 +252,7 @@ unsigned long LAST_HEARTBEAT = 0;
 void send_metric(const char* name, long metric, long& last_value) {
     bool seen = false;
     for (size_t i = 0; i < SENSOR_COUNT; i++) {
-        if (strcmp(sensors[i].id, name) == 0) { if (!seen_metrics[i]) return; seen = true; break; }
+        if (strcmp(sensors[i].id, name) == 0) { if (!seen_metrics[i] && strcmp(sensors[i].category, "diagnostic") != 0) return; seen = true; break; }
     }
     if (!seen) return;
     if (metric != last_value || (millis() - LAST_HEARTBEAT > 20000)) {
@@ -249,7 +269,7 @@ void send_metric(const char* name, long metric, long& last_value) {
 void send_metric_scaled(const char* name, long metric, long& last_value) {
     bool seen = false;
     for (size_t i = 0; i < SENSOR_COUNT; i++) {
-        if (strcmp(sensors[i].id, name) == 0) { if (!seen_metrics[i]) return; seen = true; break; }
+        if (strcmp(sensors[i].id, name) == 0) { if (!seen_metrics[i] && strcmp(sensors[i].category, "diagnostic") != 0) return; seen = true; break; }
     }
     if (!seen) return;
     if (metric != last_value || (millis() - LAST_HEARTBEAT > 20000)) {
@@ -313,13 +333,31 @@ void send_data_to_broker() {
     send_metric("actual_average_15m_peak", mActualAverage15mPeak, LAST_AVG_15M);
     send_metric("thismonth_max_15m_peak", mMax15mPeakThisMonth, LAST_MAX_15M);
     send_metric("last13months_average_15m_peak", mAverage15mPeakLast13months, LAST_AVG_13MO);
+    
     if (millis() - LAST_HEARTBEAT > 20000) {
-        char t[128], p[32]; snprintf(t, sizeof(t), "%s/wifi_rssi", MQTT_ROOT_TOPIC);
+        char t[128], p[128]; 
+        snprintf(t, sizeof(t), "%s/wifi_rssi", MQTT_ROOT_TOPIC);
         ltoa(WiFi.RSSI(), p, 10); mqtt_client.publish(t, p, false);
+        
         snprintf(t, sizeof(t), "%s/ip_address", MQTT_ROOT_TOPIC);
         mqtt_client.publish(t, WiFi.localIP().toString().c_str(), false);
+        
+        snprintf(t, sizeof(t), "%s/mac_address", MQTT_ROOT_TOPIC);
+        mqtt_client.publish(t, WiFi.macAddress().c_str(), false);
+        
+        snprintf(t, sizeof(t), "%s/board_type", MQTT_ROOT_TOPIC);
+        mqtt_client.publish(t, BOARD_NAME, false);
+        
+        snprintf(t, sizeof(t), "%s/firmware_version", MQTT_ROOT_TOPIC);
+        mqtt_client.publish(t, VERSION, false);
+        
+        snprintf(t, sizeof(t), "%s/mqtt_server", MQTT_ROOT_TOPIC);
+        snprintf(p, sizeof(p), "%s:%s", MQTT_HOST, MQTT_PORT);
+        mqtt_client.publish(t, p, false);
+        
         LAST_HEARTBEAT = millis();
     }
+    
     if (!Last13MonthsPeaks_json.isNull()) {
         char t[128]; snprintf(t, sizeof(t), "%s/last13months_peaks_json", MQTT_ROOT_TOPIC);
         send_mqtt_json(t, Last13MonthsPeaks_json); 
@@ -365,19 +403,11 @@ bool decode_telegram(int len) {
     int endChar = FindCharInArrayRev(telegram, '!', len);
     bool validCRCFound = false;
 
-    // The CRC calculation must match exactly what the meter expects.
-    // Some meters include the final \n in the CRC, some don't. 
-    // We calculate from '/' to '!' inclusive.
     if (startChar >= 0) {
         currentCRC = CRC16(0x0000, (unsigned char *)telegram + startChar, len - startChar);
     } else if (endChar >= 0) {
-        // Add the '!' to the CRC
         currentCRC = CRC16(currentCRC, (unsigned char *)telegram + endChar, 1);
-        
-        char messageCRC[5]; 
-        strncpy(messageCRC, telegram + endChar + 1, 4); 
-        messageCRC[4] = 0;
-        
+        char messageCRC[5]; strncpy(messageCRC, telegram + endChar + 1, 4); messageCRC[4] = 0;
         validCRCFound = ((unsigned int)strtol(messageCRC, NULL, 16) == currentCRC);
         if (!validCRCFound) {
             char debug_topic[128]; snprintf(debug_topic, sizeof(debug_topic), "%s/debug_crc", MQTT_ROOT_TOPIC);
@@ -386,7 +416,6 @@ bool decode_telegram(int len) {
         }
         currentCRC = 0;
     } else {
-        // Normal lines
         currentCRC = CRC16(currentCRC, (unsigned char *)telegram, len);
     }
 
@@ -443,9 +472,7 @@ bool decode_telegram(int len) {
 
 void processLine(int len) {
     if (len >= P1_MAXLINELENGTH - 2) len = P1_MAXLINELENGTH - 3; 
-    telegram[len] = 0; // Null terminate
-    
-    // Remote Debugging: Publish the first few lines to MQTT to verify baud/inversion
+    telegram[len] = 0; 
     if (!system_verified && valid_telegram_count == 0) {
         static int debug_lines = 0;
         if (debug_lines < 5) {
@@ -455,7 +482,6 @@ void processLine(int len) {
             debug_lines++;
         }
     }
-
     if (decode_telegram(len)) {
         if (millis() - LAST_UPDATE_SENT > UPDATE_INTERVAL) { send_data_to_broker(); LAST_UPDATE_SENT = millis(); }
     }
@@ -463,40 +489,20 @@ void processLine(int len) {
 
 void read_p1_hardwareserial() {
     if (ota_in_progress) return; 
-
     static int pos = 0;
-    static bool waiting_for_start = true; // Wait for '/' to begin reading
-
+    static bool waiting_for_start = true; 
+    if (Serial.available()) last_p1_received = millis();
     while (Serial.available()) {
         char c = Serial.read();
-        
         if (waiting_for_start) {
-            if (c == '/') {
-                waiting_for_start = false;
-                pos = 0;
-                telegram[pos++] = c;
-            }
-            continue; // Discard everything until we see a fresh start
+            if (c == '/') { waiting_for_start = false; pos = 0; telegram[pos++] = c; }
+            continue; 
         }
-
         if (pos < P1_MAXLINELENGTH - 2) {
             telegram[pos++] = c;
-            if (c == '\n') { 
-                processLine(pos); 
-                pos = 0; 
-                memset(telegram, 0, sizeof(telegram)); 
-            }
-            // End of telegram is '!' followed by CRC and \n. 
-            // If we finish processing a full telegram, reset the start state to ignore garbage between telegrams.
-            if (pos > 0 && telegram[pos-1] == '\n' && telegram[pos-6] == '!') {
-                waiting_for_start = true;
-            }
-        } else { 
-            // Buffer overflow safety
-            pos = 0; 
-            waiting_for_start = true; // Reset and wait for next fresh telegram
-            memset(telegram, 0, sizeof(telegram)); 
-        }
+            if (c == '\n') { processLine(pos); pos = 0; memset(telegram, 0, sizeof(telegram)); }
+            if (pos > 0 && telegram[pos-1] == '\n' && telegram[pos-6] == '!') { waiting_for_start = true; }
+        } else { pos = 0; waiting_for_start = true; memset(telegram, 0, sizeof(telegram)); }
     }
 }
 
@@ -516,8 +522,6 @@ void setup_mdns() { if (MDNS.begin(HOSTNAME)) MDNS.addService("http", "tcp", 80)
 
 void setup() {
     EEPROM.begin(512);
-    Serial.setRxBufferSize(2048); // Increase RX buffer to 2048 to prevent drops during WebUI/MQTT tasks
-    Serial.begin(BAUD_RATE, SERIAL_8N1, SERIAL_FULL);
     ESP.rtcUserMemoryRead(RTC_BASE_ADDR, (uint32_t*)&rtc_persistent, sizeof(rtc_persistent));
     const char* m_name = "Unknown";
     if (rtc_persistent.marker == RTC_MARKER) {
@@ -531,7 +535,7 @@ void setup() {
     }
     snprintf(last_reset_info, sizeof(last_reset_info), "Reason: %s | Milestone: %s", ESP.getResetReason().c_str(), m_name);
     set_milestone(1);
-    USC0(UART0) = USC0(UART0) | BIT(UCRXI); // Invert RX
+    USC0(UART0) = USC0(UART0) | BIT(UCRXI); // Invert RX early
     pinMode(LED_BUILTIN, OUTPUT);
     WiFi.persistent(false);
     if (drd.detectDoubleReset()) resetWifi();
@@ -543,7 +547,6 @@ void setup() {
         read_eeprom(70, 32, MQTT_USER); read_eeprom(102, 32, MQTT_PASS);
         read_eeprom(135, 1, ha_val_str);
         HA_AUTO_DISCOVERY = (ha_val_str[0] == '1');
-        // Load OTA password from EEPROM starting at byte 136 (length 32)
         read_eeprom(136, 32, OTA_PASS); 
     }
     WiFiManagerParameter c_host("host", "MQTT hostname", MQTT_HOST, 64);
@@ -551,7 +554,6 @@ void setup() {
     WiFiManagerParameter c_user("user", "MQTT user", MQTT_USER, 32);
     WiFiManagerParameter c_pass("pass", "MQTT pass", MQTT_PASS, 32);
     WiFiManagerParameter c_ota_pass("ota_pass", "WebUI / OTA Password", OTA_PASS, 32);
-    
     char ch[200]; snprintf(ch, sizeof(ch), "type='hidden' id='ha_val'><label style='color:#0f0;cursor:pointer;'><input type='checkbox' %s onchange=\"document.getElementById('ha_val').value=this.checked?'1':'0';\"> Enable HA Discovery</label>", HA_AUTO_DISCOVERY ? "checked" : "");
     WiFiManagerParameter c_ha("ha_val", "", ha_val_str, 2, ch);
     WiFiManager wifiManager;
@@ -569,7 +571,6 @@ void setup() {
     strcpy(MQTT_HOST, c_host.getValue()); strcpy(MQTT_PORT, c_port.getValue());
     strcpy(MQTT_USER, c_user.getValue()); strcpy(MQTT_PASS, c_pass.getValue());
     strcpy(OTA_PASS, c_ota_pass.getValue());
-    
     if (c_ha.getValue()[0] == '1' || c_ha.getValue()[0] == '0') HA_AUTO_DISCOVERY = (c_ha.getValue()[0] == '1');
     if (shouldSaveConfig) {
         write_eeprom(0, 64, MQTT_HOST); write_eeprom(64, 6, MQTT_PORT);
@@ -580,47 +581,42 @@ void setup() {
     }
     ticker.detach(); digitalWrite(LED_BUILTIN, LOW);
     setup_mdns();
-    
     ElegantOTA.begin(&server);
-    ElegantOTA.setAuth("admin", OTA_PASS); // Security via Dynamic UI Parameter
-    
-    ElegantOTA.onStart([]() {
-        Serial.println("OTA Update Starting. Pausing P1 Serial Parser.");
-        ota_in_progress = true; // Stop parsing to free up CPU
-    });
-
+    ElegantOTA.setAuth("admin", OTA_PASS); 
+    ElegantOTA.onStart([]() { Serial.println("OTA Update Starting."); ota_in_progress = true; });
     ElegantOTA.onEnd([](bool success) {
         if (success) {
-            Serial.println("OTA Update Successful! Gracefully closing connections...");
             if (mqtt_client.connected()) {
                 char status_topic[128]; snprintf(status_topic, sizeof(status_topic), "%s/status", MQTT_ROOT_TOPIC);
-                mqtt_client.publish(status_topic, "offline", true); // Send LWT manually
-                mqtt_client.loop(); // flush
-                mqtt_client.disconnect();
+                mqtt_client.publish(status_topic, "offline", true);
+                mqtt_client.loop(); mqtt_client.disconnect();
             }
-            update_rtc_totals(); // Save final state
-            // Let ElegantOTA handle the final HTTP response and auto-reboot.
-        } else {
-            Serial.println("OTA Update Failed. Resuming normal operations.");
-            ota_in_progress = false;
-        }
+            update_rtc_totals();
+        } else { ota_in_progress = false; }
     });
-
-    server.on("/", []() {
-        server.sendHeader("Location", "/update");
-        server.send(302, "text/plain", "");
-    });
+    server.on("/", []() { server.sendHeader("Location", "/update"); server.send(302, "text/plain", ""); });
     server.begin();
     mqtt_client.setBufferSize(MQTT_BUFFER_SIZE);
     mqtt_client.setServer(MQTT_HOST, atoi(MQTT_PORT));
+    
+    Serial.setRxBufferSize(2048);
+    Serial.begin(BAUD_RATE, SERIAL_8N1, SERIAL_FULL);
+    USC0(UART0) = USC0(UART0) | BIT(UCRXI);
+    while(Serial.available()) Serial.read();
+    last_p1_received = millis();
     boot_time = millis();
 }
 
 void loop() {
     server.handleClient();
     ElegantOTA.loop();
-    
     unsigned long now = millis();
+    if (!ota_in_progress && (now - last_p1_received > SERIAL_WEDGE_TIMEOUT)) {
+        Serial.end(); delay(10); Serial.begin(BAUD_RATE, SERIAL_8N1, SERIAL_FULL);
+        USC0(UART0) = USC0(UART0) | BIT(UCRXI);
+        while(Serial.available()) Serial.read();
+        last_p1_received = now;
+    }
     if (WiFi.status() != WL_CONNECTED) { if (now - lastReconnectAttempt > 30000) { WiFi.reconnect(); lastReconnectAttempt = now; } return; }
     if (!mqtt_client.connected()) { if (now - lastReconnectAttempt > 5000) { lastReconnectAttempt = now; if (mqtt_reconnect()) lastReconnectAttempt = 0; } } 
     else mqtt_client.loop();
