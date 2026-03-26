@@ -4,7 +4,7 @@
  | |___ ___) |  __/| (_)  (_) || (_) |  |  __/| |    | |  | | |___  | | | |___|  _ < 
  |_____|____/|_|    \___/\___/ \___/   |_|   |_|    |_|  |_|_____| |_| |_____|_| \_\
 
-# ⚡ ESP8266 P1-METER ⚡ [v1.6.2 - 2026 PRO EDITION]
+# ⚡ ESP8266 P1-METER ⚡ [v1.6.3 - 2026 PRO EDITION]
 
 ![WebUI Preview](assets/webui_preview.svg)
 
@@ -16,22 +16,19 @@ This is a high-performance, ultra-stable P1 Meter firmware for the **Wemos D1 Mi
 
 ## 🚀 KEY FEATURES
 
-*   **🩹 SELF-HEALING MACHINE (v1.6.2):** Advanced state monitoring that automatically detects and fixes data stream desyncs. 
+*   **🩹 SELF-HEALING MACHINE (v1.6.2+):** Advanced state monitoring that automatically detects and fixes data stream desyncs. 
     *   **CRC Streak Guard:** Resets UART if 10 bad telegrams arrive in a row.
     *   **Stabilization Watchdog:** Force-recovers if the device is stuck "Stabilizing" for more than 5 mins.
     *   **Wedge Protection:** Silently re-inits the serial port if no data is seen for 60s.
-*   **🎯 INDUSTRIAL PRECISION (v1.5.7+):** Uses high-speed **Scaled Integers (x1000)** instead of slow software floats. Provides 100% accurate Voltage, Current, and Gas readings without CPU overhead.
-*   **🛡️ BULLETPROOF BOOT v2 (v1.6.1):** UART initialization is delayed until the absolute end of setup. Automated hardware buffer purging ensures a clean start, preventing the "Stabilizing" lock.
-*   **🔋 POWER STABILITY (v1.6.1):** Fixed brownout issues by implementing `WIFI_NONE_SLEEP` mode and spreading MQTT publishes with 50ms delays. This prevents the instantaneous power spikes that cause the "Power On" resets.
-*   **🧠 ANTI-FRAG ENGINE:** Zero dynamic memory allocations (`String`/`vector`) in the main loop. Prevents "Swiss cheese" heap fragmentation, allowing for months of continuous uptime.
+*   **📊 PERSISTENT REBOOT COUNTER (v1.6.3):** Tracks reboots since the last hard power cycle using RTC SRAM. Perfect for identifying unstable firmware or OTA update cycles without physical access.
+*   **🎯 INDUSTRIAL PRECISION:** Uses high-speed **Scaled Integers (x1000)** instead of slow software floats. Provides 100% accurate Voltage, Current, and Gas readings without CPU overhead.
+*   **🛡️ BULLETPROOF BOOT v2:** UART initialization is delayed until the absolute end of setup. Automated hardware buffer purging ensures a clean start, preventing the "Stabilizing" lock.
+*   **🔋 POWER STABILITY:** Fixed brownout issues by implementing `WIFI_NONE_SLEEP` mode and spreading MQTT publishes with 50ms delays.
+*   **🧠 ANTI-FRAG ENGINE:** Zero dynamic memory allocations (`String`/`vector`) in the main loop. Prevents "Swiss cheese" heap fragmentation.
 *   **🌐 24/7 BACKGROUND OTA:** Powered by **ElegantOTA v3**. The update portal at `/update` is always online and protected by HTTP Basic Auth.
 *   **🏠 PRO HOME ASSISTANT INTEGRATION:** 
     *   **Dynamic Auto-Discovery:** Only registers the sensors your specific meter actually broadcasts.
-    *   **Advanced Diagnostics:** Native reporting of MAC Address, Board Type, Firmware Version, and current MQTT Broker connection info.
-*   **💾 RESILIENT STATE TRACKING:** 
-    *   **RTC Persistence:** Critical totals (kWh/Gas) are stored in SRAM to survive soft-reboots.
-    *   **Sanity Shield:** Discards physically impossible spikes (>10kWh/s) to keep your history clean.
-    *   **Post-Mortem Reports:** Captures reset reasons and boot milestones for easy debugging over MQTT.
+    *   **Advanced Diagnostics:** Native reporting of MAC Address, Board Type, Firmware Version, MQTT Broker info, and Reboot Count.
 
 ---
 
@@ -71,6 +68,7 @@ The Pro Edition provides deep system visibility within Home Assistant:
 - **IP & MAC Address:** Fast identification on your network.
 - **Board Type:** Detects if you are running on a Wemos D1 Mini or NodeMCU.
 - **MQTT Server:** Shows exactly which broker and port the device is currently connected to.
+- **Reboot Count:** Monitors software stability since the last cold boot.
 - **Uptime Stability:** LWT state machine transitions: `offline` ➔ `stabilizing` ➔ `online`.
 
 ---
@@ -89,12 +87,12 @@ The Pro Edition provides deep system visibility within Home Assistant:
 ---
 
 ### 📜 VERSION HISTORY (MAJOR MILESTONES)
-- **v1.6.2** - 2026-03-24: **The Self-Healing Update.** Implemented a background health monitor that automatically resets the UART hardware if it detects a CRC failure streak or a stabilization stall.
-- **v1.6.1** - 2026-03-24: **The Power Stability Patch.** Implemented `WIFI_NONE_SLEEP` and MQTT publish spreading (50ms) to prevent brownout-induced resets.
-- **v1.6.0** - 2026-03-24: **The Diagnostics Update.** Added native HA sensors for MAC, Board Type, and MQTT Server info.
+- **v1.6.3** - 2026-03-24: **The Reboot Tracker.** Added a persistent reboot counter in RTC memory to track soft-reboots and update cycles since the last cold boot.
+- **v1.6.2** - 2026-03-24: **The Self-Healing Update.** Automatically resets UART if it detects a CRC failure streak or a stabilization stall.
+- **v1.6.1** - 2026-03-24: **The Power Stability Patch.** Implemented `WIFI_NONE_SLEEP` and MQTT spreading (50ms).
+- **v1.6.0** - 2026-03-24: **The Diagnostics Update.** Added MAC, Board Type, and MQTT Server info.
 - **v1.5.8** - 2026-03-22: **Bulletproof Boot.** Implemented late-start UART and hardware buffer purging.
 - **v1.5.7** - 2026-03-22: **Industrial Precision.** Migrated telemetry to a Scaled Integer architecture.
-- **v1.5.0** - 2026-03-22: Initial Pro-Series release with ElegantOTA v3.
 
 ---
 

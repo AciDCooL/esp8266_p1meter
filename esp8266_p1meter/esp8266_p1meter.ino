@@ -1,4 +1,4 @@
-#define VERSION "1.6.2"
+#define VERSION "1.6.3"
 
 #ifdef ARDUINO_ESP8266_WEMOS_D1MINI
 #define BOARD_NAME "Wemos D1 Mini"
@@ -61,6 +61,7 @@ struct {
     long last_ret_high;
     long last_ret_low;
     long last_gas;
+    uint32_t reboot_count; // Tracks reboots since last hard power loss
 } rtc_persistent;
 
 #define RTC_MARKER 0xDEADBEEF
@@ -149,7 +150,8 @@ const HASensor sensors[] = {
     {"mac_address", "MAC Address", "", "", "", "mdi:fingerprint", "diagnostic"},
     {"board_type", "Board Type", "", "", "", "mdi:chip", "diagnostic"},
     {"firmware_version", "Firmware Version", "", "", "", "mdi:xml", "diagnostic"},
-    {"mqtt_server", "MQTT Server", "", "", "", "mdi:server", "diagnostic"}
+    {"mqtt_server", "MQTT Server", "", "", "", "mdi:server", "diagnostic"},
+    {"reboot_count", "Reboot Count", "", "", "", "mdi:counter", "diagnostic"}
 };
 
 #define SENSOR_COUNT (sizeof(sensors) / sizeof(HASensor))
@@ -244,6 +246,7 @@ long LAST_L1_P = -1, LAST_L2_P = -1, LAST_L3_P = -1, LAST_L1_C = -1, LAST_L2_C =
 long LAST_L1_R = -1, LAST_L2_R = -1, LAST_L3_R = -1;
 long LAST_TARIF = -1, LAST_S_OUT = -1, LAST_L_OUT = -1, LAST_S_DROP = -1, LAST_S_PEAK = -1;
 long LAST_AVG_15M = -1, LAST_MAX_15M = -1, LAST_AVG_13MO = -1, LAST_FREQ = -1;
+long LAST_REBOOT_COUNT = -1;
 unsigned long LAST_HEARTBEAT = 0;
 
 void send_metric(const char* name, long metric, long& last_value) {
@@ -341,6 +344,9 @@ void send_data_to_broker() {
         snprintf(t, sizeof(t), "%s/mqtt_server", MQTT_ROOT_TOPIC);
         snprintf(p, sizeof(p), "%s:%s", MQTT_HOST, MQTT_PORT);
         mqtt_client.publish(t, p, false);
+        
+        send_metric("reboot_count", (long)rtc_persistent.reboot_count, LAST_REBOOT_COUNT);
+        
         LAST_HEARTBEAT = millis();
     }
     
@@ -517,7 +523,9 @@ void setup() {
     EEPROM.begin(512);
     ESP.rtcUserMemoryRead(RTC_BASE_ADDR, (uint32_t*)&rtc_persistent, sizeof(rtc_persistent));
     const char* m_name = "Unknown";
+    
     if (rtc_persistent.marker == RTC_MARKER) {
+        rtc_persistent.reboot_count++; // Increment soft reboot counter
         switch(rtc_persistent.milestone) {
             case 1: m_name = "Booting"; break;
             case 2: m_name = "WiFi Connecting"; break;
@@ -525,7 +533,11 @@ void setup() {
             case 4: m_name = "Reading P1"; break;
             case 5: m_name = "Sending MQTT"; break;
         }
+    } else {
+        rtc_persistent.marker = RTC_MARKER;
+        rtc_persistent.reboot_count = 0; // Fresh power on
     }
+    
     snprintf(last_reset_info, sizeof(last_reset_info), "Reason: %s | Milestone: %s", ESP.getResetReason().c_str(), m_name);
     set_milestone(1);
     WiFi.setSleepMode(WIFI_NONE_SLEEP);
