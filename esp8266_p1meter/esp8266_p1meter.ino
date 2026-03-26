@@ -1,4 +1,4 @@
-#define VERSION "1.6.0"
+#define VERSION "1.6.1"
 
 #ifdef ARDUINO_ESP8266_WEMOS_D1MINI
 #define BOARD_NAME "Wemos D1 Mini"
@@ -124,12 +124,12 @@ const HASensor sensors[] = {
     {"l1_instant_power_usage", "L1 Power Usage", "W", "power", "measurement", "", ""},
     {"l2_instant_power_usage", "L2 Power Usage", "W", "power", "measurement", "", ""},
     {"l3_instant_power_usage", "L3 Power Usage", "W", "power", "measurement", "", ""},
-    {"l1_instant_power_returndelivery", "L1 Power Return", "W", "power", "measurement", "", ""},
-    {"l2_instant_power_returndelivery", "L2 Power Return", "W", "power", "measurement", "", ""},
-    {"l3_instant_power_returndelivery", "L3 Power Return", "W", "power", "measurement", "", ""},
+    {"l1_instant_power_returndelivery", "L1 Power Return", "W", "power", "measurement", ""},
+    {"l2_instant_power_returndelivery", "L2 Power Return", "W", "power", "measurement", ""},
+    {"l3_instant_power_returndelivery", "L3 Power Return", "W", "power", "measurement", ""},
     {"l1_instant_power_current", "L1 Current", "A", "current", "measurement", "", ""},
     {"l2_instant_power_current", "L2 Current", "A", "current", "measurement", "", ""},
-    {"l3_instant_power_current", "L3 Current", "A", "current", "measurement", "", ""},
+    {"l3_instant_power_current", "L3 Current", "A", "current", "measurement", ""},
     {"l1_voltage", "L1 Voltage", "V", "voltage", "measurement", "", ""},
     {"l2_voltage", "L2 Voltage", "V", "voltage", "measurement", "", ""},
     {"l3_voltage", "L3 Voltage", "V", "voltage", "measurement", "", ""},
@@ -160,7 +160,7 @@ void mark_seen(const char* id) {
 
 void publish_ha_discovery() {
     if (!HA_AUTO_DISCOVERY || !mqtt_client.connected()) return;
-    char topic[128], payload[600], status_topic[128];
+    char topic[128], status_topic[128];
     snprintf(status_topic, sizeof(status_topic), "%s/status", MQTT_ROOT_TOPIC);
     char dev_name[64], dev_id[32];
     snprintf(dev_name, sizeof(dev_name), "%s-%06X", HA_DEVICE_NAME, ESP.getChipId());
@@ -169,7 +169,6 @@ void publish_ha_discovery() {
     JsonDocument doc;
     for (size_t i = 0; i < SENSOR_COUNT; i++) {
         const HASensor& s = sensors[i];
-        // Only skip if not a diagnostic sensor and not seen yet
         if (strcmp(s.category, "diagnostic") != 0 && !seen_metrics[i]) continue;
         
         doc.clear();
@@ -198,7 +197,7 @@ void publish_ha_discovery() {
         char buffer[600];
         serializeJson(doc, buffer, sizeof(buffer));
         mqtt_client.publish(topic, buffer, true);
-        mqtt_client.loop(); yield(); delay(20); 
+        mqtt_client.loop(); yield(); delay(50); // Spread power draw
     }
     discovery_published = true;
 }
@@ -208,15 +207,9 @@ bool mqtt_reconnect() {
     snprintf(status_topic, sizeof(status_topic), "%s/status", MQTT_ROOT_TOPIC);
     snprintf(client_id, sizeof(client_id), "%s-%06X", HOSTNAME, ESP.getChipId());
     
-    // Connect with LWT set to "offline"
     if (mqtt_client.connect(client_id, MQTT_USER, MQTT_PASS, status_topic, 1, true, "offline")) {
-        
-        // If we are already verified (just a WiFi hiccup), jump straight to online
-        if (system_verified) {
-            mqtt_client.publish(status_topic, "online", true);
-        } else {
-            mqtt_client.publish(status_topic, "stabilizing", true);
-        }
+        if (system_verified) mqtt_client.publish(status_topic, "online", true);
+        else mqtt_client.publish(status_topic, "stabilizing", true);
 
         if (strlen(last_reset_info) > 0) {
             char r_topic[128], r_payload[200];
@@ -236,9 +229,7 @@ void send_mqtt_json(const char *topic, JsonDocument& doc) {
     size_t n = serializeJson(doc, buffer, sizeof(buffer));
     mqtt_client.publish(topic, (uint8_t*)buffer, n);
     doc.clear();
-    mqtt_client.loop(); 
-    yield(); 
-    delay(10);
+    mqtt_client.loop(); yield(); delay(50);
 }
 
 long LAST_CON_LOW = -1, LAST_CON_HIGH = -1, LAST_RET_LOW = -1, LAST_RET_HIGH = -1;
@@ -260,12 +251,10 @@ void send_metric(const char* name, long metric, long& last_value) {
         snprintf(topic, sizeof(topic), "%s/%s", MQTT_ROOT_TOPIC, name);
         ltoa(metric, payload, 10);
         if (mqtt_client.publish(topic, payload, false)) last_value = metric;
-        
-        mqtt_client.loop(); yield(); delay(10); 
+        mqtt_client.loop(); yield(); delay(50); 
     }
 }
 
-// High-precision non-blocking metric sender (insert dot manually)
 void send_metric_scaled(const char* name, long metric, long& last_value) {
     bool seen = false;
     for (size_t i = 0; i < SENSOR_COUNT; i++) {
@@ -275,18 +264,16 @@ void send_metric_scaled(const char* name, long metric, long& last_value) {
     if (metric != last_value || (millis() - LAST_HEARTBEAT > 20000)) {
         char topic[128], payload[32];
         snprintf(topic, sizeof(topic), "%s/%s", MQTT_ROOT_TOPIC, name);
-        
         long integer_part = metric / 1000;
-        int fractional_part = abs(metric % 1000);
+        int fractional_part = abs((int)(metric % 1000));
         snprintf(payload, sizeof(payload), "%ld.%03d", integer_part, fractional_part);
-        
         if (mqtt_client.publish(topic, payload, false)) last_value = metric;
-        mqtt_client.loop(); yield(); delay(10); 
+        mqtt_client.loop(); yield(); delay(50); 
     }
 }
 
 void send_data_to_broker() {
-    set_milestone(5); 
+    set_milestone(5); // Milestone 5 = Sending Data
     bool sane = true;
     if (rtc_persistent.marker == RTC_MARKER) {
         if (!is_data_sane(CONSUMPTION_HIGH_TARIF, rtc_persistent.last_con_high, MAX_ENERGY_DELTA, "CON_HIGH")) sane = false;
@@ -302,7 +289,6 @@ void send_data_to_broker() {
             system_verified = true;
             char status_topic[128]; snprintf(status_topic, sizeof(status_topic), "%s/status", MQTT_ROOT_TOPIC);
             mqtt_client.publish(status_topic, "online", true);
-            Serial.println(F("SYSTEM VERIFIED: Online."));
         } else return;
     }
     send_metric("consumption_low_tarif", CONSUMPTION_LOW_TARIF, LAST_CON_LOW);
@@ -338,23 +324,17 @@ void send_data_to_broker() {
         char t[128], p[128]; 
         snprintf(t, sizeof(t), "%s/wifi_rssi", MQTT_ROOT_TOPIC);
         ltoa(WiFi.RSSI(), p, 10); mqtt_client.publish(t, p, false);
-        
         snprintf(t, sizeof(t), "%s/ip_address", MQTT_ROOT_TOPIC);
         mqtt_client.publish(t, WiFi.localIP().toString().c_str(), false);
-        
         snprintf(t, sizeof(t), "%s/mac_address", MQTT_ROOT_TOPIC);
         mqtt_client.publish(t, WiFi.macAddress().c_str(), false);
-        
         snprintf(t, sizeof(t), "%s/board_type", MQTT_ROOT_TOPIC);
         mqtt_client.publish(t, BOARD_NAME, false);
-        
         snprintf(t, sizeof(t), "%s/firmware_version", MQTT_ROOT_TOPIC);
         mqtt_client.publish(t, VERSION, false);
-        
         snprintf(t, sizeof(t), "%s/mqtt_server", MQTT_ROOT_TOPIC);
         snprintf(p, sizeof(p), "%s:%s", MQTT_HOST, MQTT_PORT);
         mqtt_client.publish(t, p, false);
-        
         LAST_HEARTBEAT = millis();
     }
     
@@ -362,7 +342,7 @@ void send_data_to_broker() {
         char t[128]; snprintf(t, sizeof(t), "%s/last13months_peaks_json", MQTT_ROOT_TOPIC);
         send_mqtt_json(t, Last13MonthsPeaks_json); 
     }
-    update_rtc_totals(); set_milestone(3);
+    update_rtc_totals(); set_milestone(3); // Back to Running
 }
 
 unsigned int CRC16(unsigned int crc, unsigned char *buf, int len) {
@@ -390,10 +370,7 @@ long getValue(const char *buffer, int maxlen, char startchar, char endchar) {
     char res[16]; memset(res, 0, sizeof(res));
     if (strncpy(res, buffer + s + 1, l)) {
         for(int i=0; i<l; i++) if(res[i] == ',') res[i] = '.';
-        if (isNumber(res, l)) { 
-            if (endchar == '*') return (long)(atof(res) * 1000.0);
-            return (long)atof(res);
-        }
+        if (isNumber(res, l)) { if (endchar == '*') return (long)(atof(res) * 1000.0); return (long)atof(res); }
     }
     return 0;
 }
@@ -402,10 +379,8 @@ bool decode_telegram(int len) {
     int startChar = FindCharInArrayRev(telegram, '/', len);
     int endChar = FindCharInArrayRev(telegram, '!', len);
     bool validCRCFound = false;
-
-    if (startChar >= 0) {
-        currentCRC = CRC16(0x0000, (unsigned char *)telegram + startChar, len - startChar);
-    } else if (endChar >= 0) {
+    if (startChar >= 0) currentCRC = CRC16(0x0000, (unsigned char *)telegram + startChar, len - startChar);
+    else if (endChar >= 0) {
         currentCRC = CRC16(currentCRC, (unsigned char *)telegram + endChar, 1);
         char messageCRC[5]; strncpy(messageCRC, telegram + endChar + 1, 4); messageCRC[4] = 0;
         validCRCFound = ((unsigned int)strtol(messageCRC, NULL, 16) == currentCRC);
@@ -415,9 +390,7 @@ bool decode_telegram(int len) {
             mqtt_client.publish(debug_topic, debug_msg, false);
         }
         currentCRC = 0;
-    } else {
-        currentCRC = CRC16(currentCRC, (unsigned char *)telegram, len);
-    }
+    } else currentCRC = CRC16(currentCRC, (unsigned char *)telegram, len);
 
     if (strncmp(telegram, "1-0:1.8.1", 9) == 0) { CONSUMPTION_HIGH_TARIF = getValue(telegram, len, '(', '*'); mark_seen("consumption_high_tarif"); }
     if (strncmp(telegram, "1-0:1.8.2", 9) == 0) { CONSUMPTION_LOW_TARIF = getValue(telegram, len, '(', '*'); mark_seen("consumption_low_tarif"); }
@@ -535,11 +508,14 @@ void setup() {
     }
     snprintf(last_reset_info, sizeof(last_reset_info), "Reason: %s | Milestone: %s", ESP.getResetReason().c_str(), m_name);
     set_milestone(1);
-    USC0(UART0) = USC0(UART0) | BIT(UCRXI); // Invert RX early
+    
+    // WiFi & Power Stability
+    WiFi.setSleepMode(WIFI_NONE_SLEEP); // Prevent brownouts during WiFi spikes
     pinMode(LED_BUILTIN, OUTPUT);
     WiFi.persistent(false);
     if (drd.detectDoubleReset()) resetWifi();
     ticker.attach(0.6, tick);
+    
     char settings_available[2] = ""; read_eeprom(134, 1, settings_available);
     char ha_val_str[2] = "1";
     if (settings_available[0] == '1') {
@@ -571,7 +547,6 @@ void setup() {
     strcpy(MQTT_HOST, c_host.getValue()); strcpy(MQTT_PORT, c_port.getValue());
     strcpy(MQTT_USER, c_user.getValue()); strcpy(MQTT_PASS, c_pass.getValue());
     strcpy(OTA_PASS, c_ota_pass.getValue());
-    if (c_ha.getValue()[0] == '1' || c_ha.getValue()[0] == '0') HA_AUTO_DISCOVERY = (c_ha.getValue()[0] == '1');
     if (shouldSaveConfig) {
         write_eeprom(0, 64, MQTT_HOST); write_eeprom(64, 6, MQTT_PORT);
         write_eeprom(70, 32, MQTT_USER); write_eeprom(102, 32, MQTT_PASS);
@@ -583,7 +558,7 @@ void setup() {
     setup_mdns();
     ElegantOTA.begin(&server);
     ElegantOTA.setAuth("admin", OTA_PASS); 
-    ElegantOTA.onStart([]() { Serial.println("OTA Update Starting."); ota_in_progress = true; });
+    ElegantOTA.onStart([]() { ota_in_progress = true; });
     ElegantOTA.onEnd([](bool success) {
         if (success) {
             if (mqtt_client.connected()) {
@@ -599,12 +574,14 @@ void setup() {
     mqtt_client.setBufferSize(MQTT_BUFFER_SIZE);
     mqtt_client.setServer(MQTT_HOST, atoi(MQTT_PORT));
     
+    // --- LATE START SERIAL INIT (Bulletproof Boot v2) ---
     Serial.setRxBufferSize(2048);
     Serial.begin(BAUD_RATE, SERIAL_8N1, SERIAL_FULL);
-    USC0(UART0) = USC0(UART0) | BIT(UCRXI);
-    while(Serial.available()) Serial.read();
+    USC0(UART0) = USC0(UART0) | BIT(UCRXI); // Hardware inversion
+    while(Serial.available()) Serial.read(); // Physical purge
     last_p1_received = millis();
     boot_time = millis();
+    set_milestone(3); // Fully Running
 }
 
 void loop() {
