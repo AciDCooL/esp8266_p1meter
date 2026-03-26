@@ -27,19 +27,39 @@ This is a high-performance, ultra-stable P1 Meter firmware for the **Wemos D1 Mi
 *   **💾 RESILIENT STATE TRACKING:** 
     *   **RTC Persistence:** Critical totals (kWh/Gas) are stored in SRAM to survive soft-reboots.
     *   **Sanity Shield:** Discards physically impossible spikes (>10kWh/s) to keep your history clean.
-    *   **Post-Mortem Reports:** Captures reset reasons and boot milestones for easy debugging over MQTT.
+    *   **Post-MortEM Reports:** Captures reset reasons and boot milestones for easy debugging over MQTT.
 
 ---
 
 ## 🔌 HARDWARE WIRING
 
-Connect your ESP8266 to an RJ11 cable following this standard pinout:
+Connect your ESP8266 to an RJ11 cable following these diagrams. 
+
+**Note:** When using a 4-pin RJ11 connector (instead of 6-pin), pin 1 and 6 are simply missing. The first physical pin is pin 2 and the last is pin 5.
+
+### Standard Wiring (External Power)
+Recommended for most setups. A 10K resistor is often required between 3.3V and the Data (RXD) pin for signal stability.
 
 | P1 pin | ESP8266 Pin | Notes |
 | :--- | :--- | :--- |
+| 2 - RTS | 3.3v | Request to Send (Activates Port) |
+| 3 - GND | GND | Ground |
+| 5 - RXD | RX (GPIO3) | Data (10K pullup to 3.3V recommended) |
+
+![Standard Wiring](assets/esp8266_p1meter_bb.png)
+
+### Powered by Meter (DSMR 5.0+)
+If your meter supports DSMR 5.0, it can power the ESP8266 directly via Pin 1.
+
+| P1 pin | ESP8266 Pin | Notes |
+| :--- | :--- | :--- |
+| 1 - 5V out | 5V / VIN | Power from Meter |
 | 2 - RTS | 3.3v | Request to Send |
 | 3 - GND | GND | Ground |
-| 5 - RXD | RX (GPIO3) | Data (10K pullup may be needed) |
+| 5 - RXD | RX (GPIO3) | Data |
+| 6 - GND | GND | Ground |
+
+![Powered by Meter](assets/esp8266_p1meter_bb_PoweredByMeter.png)
 
 ---
 
@@ -53,12 +73,28 @@ In addition to energy metrics, the Pro Edition provides deep system visibility:
 
 ---
 
-## 🎮 QUICK START
+## 🎮 INSTALLATION & BUILD
 
-1. **Flash:** Upload via PlatformIO or Arduino IDE (see `README` for library list).
-2. **Setup:** Connect to the `p1meter` WiFi AP and enter your MQTT credentials in the Hacker UI.
-3. **Secure:** Set your custom OTA password during setup to lock the `/update` portal.
-4. **Enjoy:** Home Assistant will automatically find your meter and start the Energy dashboard.
+### Option 1: PlatformIO (Recommended)
+1. Open the project folder in **VS Code** with the **PlatformIO** extension.
+2. Edit `esp8266_p1meter/settings.h` if you wish to change hardcoded branding.
+3. Click **Upload**. PlatformIO handles all library dependencies automatically.
+
+### Option 2: Arduino IDE
+1. Open `esp8266_p1meter/esp8266_p1meter.ino`.
+2. Install the following libraries via **Tools > Manage Libraries**:
+   - `WiFiManager` by tzapu (v2.0+)
+   - `PubSubClient` by Nick O'Leary
+   - `DoubleResetDetector` by Stephen Denne
+   - `ArduinoJson` by Benoit Blanchon (**v7.0+**)
+   - `ElegantOTA` by Ayush Sharma (**v3.1.0+**)
+3. Connect your board and click **Upload**.
+
+### First Boot Setup
+1. Connect to the `p1meter` WiFi Access Point.
+2. Enter your WiFi and MQTT credentials in the neon "Hacker UI".
+3. Set your custom **WebUI / OTA Password** to secure the device.
+4. Click **Save**. Home Assistant will automatically discover the meter within 30 seconds.
 
 ---
 
@@ -73,6 +109,6 @@ In addition to energy metrics, the Pro Edition provides deep system visibility:
 ---
 
 ### ❤️ CREDITS
-Based on the original work by [Daniel Jong](https://github.com/daniel-jong). 2026 enhancements by AciDCooL.
+Based on the original work by [Daniel Jong](https://github.com/daniel-jong). 2026 Pro enhancements by AciDCooL.
 
 **"Stay static, stay stable."** ✌️💀
