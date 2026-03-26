@@ -1,4 +1,4 @@
-#define VERSION "1.6.1"
+#define VERSION "1.6.2"
 
 #ifdef ARDUINO_ESP8266_WEMOS_D1MINI
 #define BOARD_NAME "Wemos D1 Mini"
@@ -35,6 +35,7 @@ void send_data_to_broker();
 bool decode_telegram(int len);
 void processLine(int len);
 void read_p1_hardwareserial();
+void init_p1_serial();
 void read_eeprom(int offset, int len, char* buffer);
 void write_eeprom(int offset, int len, const char* value);
 void save_wifi_config_callback();
@@ -69,9 +70,14 @@ bool system_verified = false;
 int valid_telegram_count = 0;
 bool ota_in_progress = false;
 unsigned long last_p1_received = 0; 
+unsigned long stabilization_started_at = 0;
+int crc_fail_streak = 0;
+
 #define STABILIZATION_THRESHOLD 3
 #define MAX_ENERGY_DELTA 10000 // Max 10kWh jump in 1s
 #define SERIAL_WEDGE_TIMEOUT 60000 // 60 seconds without data = re-init
+#define STABILIZATION_TIMEOUT 300000 // 5 minutes stuck stabilizing = re-init
+#define MAX_CRC_FAIL_STREAK 10 // 10 bad telegrams = re-init
 
 void set_milestone(uint32_t m) {
     rtc_persistent.milestone = m;
@@ -385,9 +391,12 @@ bool decode_telegram(int len) {
         char messageCRC[5]; strncpy(messageCRC, telegram + endChar + 1, 4); messageCRC[4] = 0;
         validCRCFound = ((unsigned int)strtol(messageCRC, NULL, 16) == currentCRC);
         if (!validCRCFound) {
+            crc_fail_streak++;
             char debug_topic[128]; snprintf(debug_topic, sizeof(debug_topic), "%s/debug_crc", MQTT_ROOT_TOPIC);
-            char debug_msg[128]; snprintf(debug_msg, sizeof(debug_msg), "CRC FAIL: Calc=%04X, Meter=%s", currentCRC, messageCRC);
+            char debug_msg[128]; snprintf(debug_msg, sizeof(debug_msg), "CRC FAIL [%d]: Calc=%04X, Meter=%s", crc_fail_streak, currentCRC, messageCRC);
             mqtt_client.publish(debug_topic, debug_msg, false);
+        } else {
+            crc_fail_streak = 0;
         }
         currentCRC = 0;
     } else currentCRC = CRC16(currentCRC, (unsigned char *)telegram, len);
@@ -479,6 +488,17 @@ void read_p1_hardwareserial() {
     }
 }
 
+void init_p1_serial() {
+    Serial.end(); delay(100);
+    Serial.setRxBufferSize(2048);
+    Serial.begin(BAUD_RATE, SERIAL_8N1, SERIAL_FULL);
+    USC0(UART0) = USC0(UART0) | BIT(UCRXI);
+    while(Serial.available()) Serial.read();
+    last_p1_received = millis();
+    crc_fail_streak = 0;
+    valid_telegram_count = 0;
+}
+
 void read_eeprom(int offset, int len, char* buffer) { for (int i = 0; i < len; ++i) buffer[i] = char(EEPROM.read(i + offset)); buffer[len] = '\0'; }
 void write_eeprom(int offset, int len, const char* value) {
     size_t val_len = strlen(value);
@@ -508,14 +528,11 @@ void setup() {
     }
     snprintf(last_reset_info, sizeof(last_reset_info), "Reason: %s | Milestone: %s", ESP.getResetReason().c_str(), m_name);
     set_milestone(1);
-    
-    // WiFi & Power Stability
-    WiFi.setSleepMode(WIFI_NONE_SLEEP); // Prevent brownouts during WiFi spikes
+    WiFi.setSleepMode(WIFI_NONE_SLEEP);
     pinMode(LED_BUILTIN, OUTPUT);
     WiFi.persistent(false);
     if (drd.detectDoubleReset()) resetWifi();
     ticker.attach(0.6, tick);
-    
     char settings_available[2] = ""; read_eeprom(134, 1, settings_available);
     char ha_val_str[2] = "1";
     if (settings_available[0] == '1') {
@@ -574,26 +591,30 @@ void setup() {
     mqtt_client.setBufferSize(MQTT_BUFFER_SIZE);
     mqtt_client.setServer(MQTT_HOST, atoi(MQTT_PORT));
     
-    // --- LATE START SERIAL INIT (Bulletproof Boot v2) ---
-    Serial.setRxBufferSize(2048);
-    Serial.begin(BAUD_RATE, SERIAL_8N1, SERIAL_FULL);
-    USC0(UART0) = USC0(UART0) | BIT(UCRXI); // Hardware inversion
-    while(Serial.available()) Serial.read(); // Physical purge
-    last_p1_received = millis();
+    init_p1_serial();
     boot_time = millis();
-    set_milestone(3); // Fully Running
+    stabilization_started_at = millis();
+    set_milestone(3);
 }
 
 void loop() {
     server.handleClient();
     ElegantOTA.loop();
     unsigned long now = millis();
-    if (!ota_in_progress && (now - last_p1_received > SERIAL_WEDGE_TIMEOUT)) {
-        Serial.end(); delay(10); Serial.begin(BAUD_RATE, SERIAL_8N1, SERIAL_FULL);
-        USC0(UART0) = USC0(UART0) | BIT(UCRXI);
-        while(Serial.available()) Serial.read();
-        last_p1_received = now;
+    
+    // SELF-HEALING Logic
+    bool serial_needs_reset = false;
+    if (!ota_in_progress) {
+        if (now - last_p1_received > SERIAL_WEDGE_TIMEOUT) serial_needs_reset = true;
+        if (crc_fail_streak >= MAX_CRC_FAIL_STREAK) serial_needs_reset = true;
+        if (!system_verified && (now - stabilization_started_at > STABILIZATION_TIMEOUT)) serial_needs_reset = true;
     }
+
+    if (serial_needs_reset) {
+        init_p1_serial();
+        stabilization_started_at = now;
+    }
+
     if (WiFi.status() != WL_CONNECTED) { if (now - lastReconnectAttempt > 30000) { WiFi.reconnect(); lastReconnectAttempt = now; } return; }
     if (!mqtt_client.connected()) { if (now - lastReconnectAttempt > 5000) { lastReconnectAttempt = now; if (mqtt_reconnect()) lastReconnectAttempt = 0; } } 
     else mqtt_client.loop();
