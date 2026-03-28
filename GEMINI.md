@@ -36,5 +36,5 @@ This file serves as the foundational mandate for all future AI interactions with
 - **Precision:** Current, Voltage, and Gas must be transmitted as high-precision floats (scaled by 1000 in raw datagram, divided by 1000.0 before MQTT publish).
 
 ---
-**Current Stable Version:** 1.6.3
+**Current Stable Version:** 1.6.9
 **Project State:** Production-Ready / Optimized.

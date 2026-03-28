@@ -1,4 +1,4 @@
-#define VERSION "1.6.3"
+#define VERSION "1.6.9"
 
 #ifdef ARDUINO_ESP8266_WEMOS_D1MINI
 #define BOARD_NAME "Wemos D1 Mini"
@@ -14,7 +14,6 @@
 #include <ESP8266WiFi.h>
 #include <Ticker.h>
 #include <ESP8266WebServer.h>
-#include <ElegantOTA.h>
 #include <WiFiManager.h>
 #include <ESP8266mDNS.h>
 #include <WiFiUdp.h>
@@ -131,17 +130,17 @@ const HASensor sensors[] = {
     {"l1_instant_power_usage", "L1 Power Usage", "W", "power", "measurement", "", ""},
     {"l2_instant_power_usage", "L2 Power Usage", "W", "power", "measurement", "", ""},
     {"l3_instant_power_usage", "L3 Power Usage", "W", "power", "measurement", "", ""},
-    {"l1_instant_power_returndelivery", "L1 Power Return", "W", "power", "measurement", ""},
-    {"l2_instant_power_returndelivery", "L2 Power Return", "W", "power", "measurement", ""},
-    {"l3_instant_power_returndelivery", "L3 Power Return", "W", "power", "measurement", ""},
+    {"l1_instant_power_returndelivery", "L1 Power Return", "W", "power", "measurement", "", ""},
+    {"l2_instant_power_returndelivery", "L2 Power Return", "W", "power", "measurement", "", ""},
+    {"l3_instant_power_returndelivery", "L3 Power Return", "W", "power", "measurement", "", ""},
     {"l1_instant_power_current", "L1 Current", "A", "current", "measurement", "", ""},
     {"l2_instant_power_current", "L2 Current", "A", "current", "measurement", "", ""},
-    {"l3_instant_power_current", "L3 Current", "A", "current", "measurement", ""},
+    {"l3_instant_power_current", "L3 Current", "A", "current", "measurement", "", ""},
     {"l1_voltage", "L1 Voltage", "V", "voltage", "measurement", "", ""},
     {"l2_voltage", "L2 Voltage", "V", "voltage", "measurement", "", ""},
     {"l3_voltage", "L3 Voltage", "V", "voltage", "measurement", "", ""},
     {"frequency", "Line Frequency", "Hz", "frequency", "measurement", "", ""},
-    {"gas_meter_m3", "Gas Meter", "m³", "gas", "total_increasing", "", ""},
+    {"gas_meter_m3", "Gas Meter", "m\u00b3", "gas", "total_increasing", "", ""},
     {"actual_average_15m_peak", "Peak 15m Average", "W", "power", "measurement", "", ""},
     {"thismonth_max_15m_peak", "Peak Max This Month", "W", "power", "measurement", "", ""},
     {"last13months_average_15m_peak", "Peak 13 Months Avg", "W", "power", "measurement", "", ""},
@@ -444,12 +443,11 @@ bool decode_telegram(int len) {
             for (int i = 0; i < 2 && ptr; i++) ptr = strchr(ptr + 1, '(');
             long sum = 0; int valid_values = 0;
             while (ptr) {
-                ptr = strchr(ptr + 1, '('); if (!ptr) break;
-                ptr = strchr(ptr + 1, '('); if (!ptr) break;
-                ptr = strchr(ptr + 1, '('); if (!ptr) break;
+                ptr = strchr(ptr + 1, '('); if (!ptr) break; // Move to (date)
+                ptr = strchr(ptr + 1, '('); if (!ptr) break; // Move to (value)
                 float val_kW = atof(ptr + 1); long val_W = (long)(val_kW * 1000.0);
                 peakvalues.add(val_W); sum += val_W; valid_values++;
-                ptr = strchr(ptr, ')');
+                ptr = strchr(ptr, ')'); // Move to end of value
             }
             if (valid_values > 0 && count == (unsigned long)valid_values) mAverage15mPeakLast13months = sum / valid_values;
             else mAverage15mPeakLast13months = -1;
@@ -488,8 +486,13 @@ void read_p1_hardwareserial() {
         }
         if (pos < P1_MAXLINELENGTH - 2) {
             telegram[pos++] = c;
-            if (c == '\n') { processLine(pos); pos = 0; memset(telegram, 0, sizeof(telegram)); }
-            if (pos > 0 && telegram[pos-1] == '\n' && telegram[pos-6] == '!') { waiting_for_start = true; }
+            if (c == '\n') { 
+                telegram[pos] = 0;
+                if (telegram[0] == '!') waiting_for_start = true;
+                processLine(pos); 
+                pos = 0; 
+                memset(telegram, 0, sizeof(telegram)); 
+            }
         } else { pos = 0; waiting_for_start = true; memset(telegram, 0, sizeof(telegram)); }
     }
 }
@@ -543,7 +546,13 @@ void setup() {
     WiFi.setSleepMode(WIFI_NONE_SLEEP);
     pinMode(LED_BUILTIN, OUTPUT);
     WiFi.persistent(false);
-    if (drd.detectDoubleReset()) resetWifi();
+    if (drd.detectDoubleReset()) {
+        if (ESP.getResetReason() == "External System") {
+            resetWifi();
+        } else {
+            drd.stop(); // Clear DRD flag if it was a crash or soft reboot
+        }
+    }
     ticker.attach(0.6, tick);
     char settings_available[2] = ""; read_eeprom(134, 1, settings_available);
     char ha_val_str[2] = "1";
@@ -558,7 +567,7 @@ void setup() {
     WiFiManagerParameter c_port("port", "MQTT port", MQTT_PORT, 6);
     WiFiManagerParameter c_user("user", "MQTT user", MQTT_USER, 32);
     WiFiManagerParameter c_pass("pass", "MQTT pass", MQTT_PASS, 32);
-    WiFiManagerParameter c_ota_pass("ota_pass", "WebUI / OTA Password", OTA_PASS, 32);
+    WiFiManagerParameter c_ota_pass("ota_pass", "WebUI Password (Username: admin)", OTA_PASS, 32);
     char ch[200]; snprintf(ch, sizeof(ch), "type='hidden' id='ha_val'><label style='color:#0f0;cursor:pointer;'><input type='checkbox' %s onchange=\"document.getElementById('ha_val').value=this.checked?'1':'0';\"> Enable HA Discovery</label>", HA_AUTO_DISCOVERY ? "checked" : "");
     WiFiManagerParameter c_ha("ha_val", "", ha_val_str, 2, ch);
     WiFiManager wifiManager;
@@ -573,6 +582,7 @@ void setup() {
     wifiManager.addParameter(&c_ha);
     set_milestone(2);
     if (!wifiManager.autoConnect()) ESP.restart();
+    drd.stop(); // Success: Close the double-reset window immediately
     strcpy(MQTT_HOST, c_host.getValue()); strcpy(MQTT_PORT, c_port.getValue());
     strcpy(MQTT_USER, c_user.getValue()); strcpy(MQTT_PASS, c_pass.getValue());
     strcpy(OTA_PASS, c_ota_pass.getValue());
@@ -585,19 +595,93 @@ void setup() {
     }
     ticker.detach(); digitalWrite(LED_BUILTIN, LOW);
     setup_mdns();
-    ElegantOTA.begin(&server);
-    ElegantOTA.setAuth("admin", OTA_PASS); 
-    ElegantOTA.onStart([]() { ota_in_progress = true; });
-    ElegantOTA.onEnd([](bool success) {
-        if (success) {
-            if (mqtt_client.connected()) {
-                char status_topic[128]; snprintf(status_topic, sizeof(status_topic), "%s/status", MQTT_ROOT_TOPIC);
-                mqtt_client.publish(status_topic, "offline", true);
-                mqtt_client.loop(); mqtt_client.disconnect();
-            }
-            update_rtc_totals();
-        } else { ota_in_progress = false; }
+
+    // * Custom Firmware-Only OTA Handlers
+    server.on("/update", HTTP_GET, []() {
+        if (!server.authenticate("admin", OTA_PASS)) return server.requestAuthentication();
+        
+        // 1. Send Header & CSS (Chunked to save RAM)
+        server.sendHeader("Cache-Control", "no-cache");
+        server.setContentLength(CONTENT_LENGTH_UNKNOWN);
+        server.send(200, "text/html", ""); 
+        
+        server.sendContent("<!DOCTYPE html><html><head><meta name='viewport' content='width=device-width, initial-scale=1'><title>P1-METER</title>");
+        server.sendContent("<style>body{background:#0a0a0a;color:#0f0;font-family:monospace;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;}");
+        server.sendContent(".wrap{border:1px solid #0f0;padding:20px;box-shadow:0 0 15px #0f0;text-align:center;max-width:400px;width:90%;margin:20px;}");
+        server.sendContent(".stats{text-align:left;background:#111;padding:15px;margin:20px 0;border-left:3px solid #0f0;font-size:0.9em;}");
+        server.sendContent("p{margin:5px 0;border-bottom:1px solid #222;padding-bottom:2px;} .val{color:#fff;float:right;} h1{text-shadow:0 0 5px #0f0;}");
+        server.sendContent("input[type='file']{background:#111;color:#0f0;border:1px solid #0f0;padding:10px;width:100%;box-sizing:border-box;margin-bottom:20px;}");
+        server.sendContent("input[type='submit']{background:#0f0;color:#000;border:none;padding:15px;width:100%;font-weight:bold;cursor:pointer;text-transform:uppercase;}");
+        server.sendContent(".btn-reboot{background:#333;color:#0f0;border:1px solid #0f0;padding:10px;width:100%;margin-top:10px;font-weight:bold;cursor:pointer;display:block;text-decoration:none;}");
+        server.sendContent("@keyframes blink{0%{opacity:1;}50%{opacity:0.3;}100%{opacity:1;}} .blink{animation:blink 1s infinite;}</style></head><body>");
+        server.sendContent("<div class='wrap'><h1>SYSTEM TELEMETRY</h1><div class='stats'>");
+
+        // 2. Generate and Send Stats (Zero-allocation path)
+        char buf[128];
+        unsigned long s = millis() / 1000;
+        int d = s / 86400; int h = (s % 86400) / 3600; int m = (s % 3600) / 60;
+        uint32_t free_ram = ESP.getFreeHeap();
+        int ram_pct = (free_ram * 100) / 81920; 
+        IPAddress ip = WiFi.localIP();
+
+        snprintf(buf, sizeof(buf), "<p>VERSION <span class='val'>v%s</span></p>", VERSION); server.sendContent(buf);
+        snprintf(buf, sizeof(buf), "<p>UPTIME <span class='val'>%dd %dh %dm</span></p>", d, h, m); server.sendContent(buf);
+        snprintf(buf, sizeof(buf), "<p>IP <span class='val'>%d.%d.%d.%d</span></p>", ip[0], ip[1], ip[2], ip[3]); server.sendContent(buf);
+        snprintf(buf, sizeof(buf), "<p>MAC <span class='val'>%s</span></p>", WiFi.macAddress().c_str()); server.sendContent(buf);
+        snprintf(buf, sizeof(buf), "<p>MQTT <span class='val'>%s</span></p>", mqtt_client.connected() ? "CONNECTED" : "DISCONNECTED"); server.sendContent(buf);
+        snprintf(buf, sizeof(buf), "<p>SIGNAL <span class='val'>%d dBm</span></p>", WiFi.RSSI()); server.sendContent(buf);
+        snprintf(buf, sizeof(buf), "<p>P1 STATE <span class='val'>%s</span></p>", system_verified ? "VERIFIED" : "STABILIZING"); server.sendContent(buf);
+        snprintf(buf, sizeof(buf), "<p>LAST DATA <span class='val'>%lu sec ago</span></p>", (millis() - last_p1_received) / 1000); server.sendContent(buf);
+        snprintf(buf, sizeof(buf), "<p>FREE RAM <span class='val'>%u bytes (%d%%)</span></p>", free_ram, ram_pct); server.sendContent(buf);
+        snprintf(buf, sizeof(buf), "<p>REBOOTS <span class='val'>%u</span></p>", rtc_persistent.reboot_count); server.sendContent(buf);
+
+        // 3. Send Form & Footer
+        server.sendContent("</div><form method='POST' action='/update' enctype='multipart/form-data' onsubmit='document.getElementById(\"upd\").style.display=\"none\";document.getElementById(\"prg\").style.display=\"block\";'>");
+        server.sendContent("<div id='upd'><input type='file' name='update' accept='.bin'><input type='submit' value='Flash Firmware'></div>");
+        server.sendContent("<div id='prg' style='display:none;'><h2 class='blink'>FLASHING...</h2><p>DO NOT CLOSE THIS PAGE</p></div></form>");
+        server.sendContent("<button onclick=\"if(confirm('Are you sure you want to reboot?')) location.href='/reboot'\" class='btn-reboot'>REBOOT DEVICE</button></div></body></html>");
+        server.sendContent(""); // End of stream
     });
+
+    server.on("/reboot", HTTP_GET, []() {
+        if (!server.authenticate("admin", OTA_PASS)) return server.requestAuthentication();
+        server.send(200, "text/html", "<!DOCTYPE html><html><head><style>body{background:#0a0a0a;color:#0f0;font-family:monospace;display:flex;justify-content:center;align-items:center;height:100vh;margin:0;}.wrap{border:1px solid #0f0;padding:30px;box-shadow:0 0 15px #0f0;text-align:center;}h1{text-shadow:0 0 5px #0f0;}</style></head><body><div class='wrap'><h1>REBOOTING</h1><p>The device is restarting...</p><p>Redirecting in <span id='c'>35</span>s</p></div><script>var s=35;var x=setInterval(function(){s--;document.getElementById(\"c\").textContent=s;if(s<=0){clearInterval(x);location.href=\"/update\";}},1000);</script></body></html>");
+        delay(1000);
+        ESP.restart();
+    });
+
+    server.on("/update", HTTP_POST, []() {
+        if (!server.authenticate("admin", OTA_PASS)) return;
+        server.sendHeader("Connection", "close");
+        if (Update.hasError()) {
+            server.send(200, "text/html", "<!DOCTYPE html><html><body style='background:#0a0a0a;color:red;font-family:monospace;text-align:center;padding:50px;'><h1>UPDATE FAILED</h1><a href='/update' style='color:#0f0;'>[ BACK ]</a></body></html>");
+        } else {
+            server.send(200, "text/html", "<!DOCTYPE html><html><head><style>body{background:#0a0a0a;color:#0f0;font-family:monospace;display:flex;justify-content:center;align-items:center;height:100vh;margin:0;}.wrap{border:1px solid #0f0;padding:30px;box-shadow:0 0 15px #0f0;text-align:center;}h1{text-shadow:0 0 5px #0f0;}</style></head><body><div class='wrap'><h1>SUCCESS</h1><p>FIRMWARE INSTALLED</p><p>REBOOTING...</p><p>Redirecting in <span id='c'>35</span>s</p></div><script>var s=35;var x=setInterval(function(){s--;document.getElementById(\"c\").textContent=s;if(s<=0){clearInterval(x);location.href=\"/update\";}},1000);</script></body></html>");
+        }
+        delay(1000);
+        ESP.restart();
+    }, []() {
+        HTTPUpload& upload = server.upload();
+        if (upload.status == UPLOAD_FILE_START) {
+            ota_in_progress = true;
+            Serial.printf("Update Start: %s\n", upload.filename.c_str());
+            uint32_t maxSketchSpace = (ESP.getFreeSketchSpace() - 0x1000) & 0xFFFFF000;
+            if (!Update.begin(maxSketchSpace)) Update.printError(Serial);
+        } else if (upload.status == UPLOAD_FILE_WRITE) {
+            if (Update.write(upload.buf, upload.currentSize) != upload.currentSize) Update.printError(Serial);
+        } else if (upload.status == UPLOAD_FILE_END) {
+            if (Update.end(true)) {
+                Serial.printf("Update Success: %u bytes\nRebooting...\n", upload.totalSize);
+                if (mqtt_client.connected()) {
+                    char status_topic[128]; snprintf(status_topic, sizeof(status_topic), "%s/status", MQTT_ROOT_TOPIC);
+                    mqtt_client.publish(status_topic, "offline", true);
+                    mqtt_client.loop(); mqtt_client.disconnect();
+                }
+                update_rtc_totals();
+            } else Update.printError(Serial);
+        }
+    });
+
     server.on("/", []() { server.sendHeader("Location", "/update"); server.send(302, "text/plain", ""); });
     server.begin();
     mqtt_client.setBufferSize(MQTT_BUFFER_SIZE);
@@ -611,7 +695,6 @@ void setup() {
 
 void loop() {
     server.handleClient();
-    ElegantOTA.loop();
     unsigned long now = millis();
     
     // SELF-HEALING Logic
